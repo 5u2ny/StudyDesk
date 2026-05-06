@@ -611,26 +611,28 @@ export default function App() {
     await refresh()
   }
 
-  // Ticket 1.1 — IA collapse 10 → 6.
-  // Visible-in-strip tabs, in user-facing order. Demoted tools
-  // (dashboard / quiz / assignment / syllabus / map / timeline)
-  // are reachable via the "More" overflow menu rendered below.
+  // Ticket 1.1 IA — 8 visible tabs (user explicitly asked for Maps +
+  // Quiz back as primary). The remaining 4 demoted tools — Dashboard,
+  // Parser, Syllabus, Timeline — stay in the "More" menu.
+  // Dashboard auto-shows in "All Courses" mode anyway. Parser and
+  // Syllabus are intent-as-action (import flows), better as menu items
+  // than tabs. Timeline is reachable from the Deadlines view toggle.
   const tools: Array<{ id: WorkspaceTool; label: string; icon: React.ReactNode }> = [
     { id: 'today',      label: 'Today',     icon: <PanelTop size={14} /> },
     { id: 'daily',      label: 'Daily',     icon: <CalendarDays size={14} /> },
     { id: 'deadlines',  label: 'Deadlines', icon: <Clock3 size={14} /> },
     { id: 'flashcards', label: 'Cards',     icon: <ClipboardList size={14} /> },
+    { id: 'quiz',       label: 'Quiz',      icon: <HelpCircle size={14} /> },
     { id: 'materials',  label: 'Materials', icon: <Folder size={14} /> },
     { id: 'class',      label: 'Class',     icon: <GraduationCap size={14} /> },
+    { id: 'map',        label: 'Map',       icon: <Network size={14} /> },
   ]
   // Demoted but still routable. Used by the overflow menu.
   const demotedTools: Array<{ id: WorkspaceTool; label: string; icon: React.ReactNode; hint?: string }> = [
     { id: 'dashboard', label: 'Dashboard',         icon: <LayoutDashboard size={14} />, hint: 'Auto-shown when no course selected' },
-    { id: 'quiz',      label: 'Quiz builder',      icon: <HelpCircle size={14} />,      hint: 'Future: subtab inside Cards' },
-    { id: 'assignment',label: 'Assignment parser', icon: <Sparkles size={14} />,        hint: 'Future: + Import action' },
-    { id: 'syllabus',  label: 'Syllabus import',   icon: <FileText size={14} />,        hint: 'Future: + Import action' },
-    { id: 'map',       label: 'Relation map',      icon: <Network size={14} />,         hint: 'Future: view-mode toggle in Today' },
-    { id: 'timeline',  label: 'Timeline',          icon: <CalendarDays size={14} />,    hint: 'Future: view-mode toggle in Deadlines' },
+    { id: 'assignment',label: 'Assignment parser', icon: <Sparkles size={14} />,        hint: 'Parse a selected note into an assignment + deadline' },
+    { id: 'syllabus',  label: 'Syllabus import',   icon: <FileText size={14} />,        hint: 'Parse a syllabus into deadlines + assignments' },
+    { id: 'timeline',  label: 'Timeline',          icon: <CalendarDays size={14} />,    hint: 'Also reachable as a view toggle in Deadlines' },
   ]
   const [showMoreTools, setShowMoreTools] = useState(false)
   const moreToolsRef = useRef<HTMLDivElement | null>(null)

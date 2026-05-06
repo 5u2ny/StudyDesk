@@ -21,6 +21,17 @@ process.on('unhandledRejection', (reason) => console.error('[main] Unhandled rej
 // — patched at npm-start time by scripts/dev-rebrand.sh.
 app.setName('StudyDesk');
 
+// Single-instance lock. Without this, two simultaneous launches (e.g.
+// dev `npm start` while a stale packaged build is still alive on the
+// dock) each create their own always-on-top notch panel and the user
+// sees two overlapping notches / a wider ghost bar where they overlap.
+// requestSingleInstanceLock returns false on the second launch — we
+// just exit immediately so the first instance keeps owning the screen.
+if (!app.requestSingleInstanceLock()) {
+  console.log('[main] another StudyDesk instance is already running, exiting');
+  app.quit();
+}
+
 // Mark app as NOT quitting by default (used by notes window hide-on-close guard)
 (app as any).isQuitting = false;
 

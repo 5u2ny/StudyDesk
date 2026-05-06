@@ -79,7 +79,12 @@ export class WindowManager {
     // Use the hardware notch / menu-bar height as the shell height so it
     // matches pixel-for-pixel (38 on M-series Pro, 32 on Air, etc.).
     const NOTCH_H = Math.max(display.workArea.y - display.bounds.y, 32);
-    const BAR_W = 360;
+    // Match notchSizing.ts PHYSICAL_NOTCH_WIDTH so the BrowserWindow is
+    // born at the same 180px the React app will resize it to on idle.
+    // The previous 360px initial width painted a wide ghost bar during
+    // the brief window between mount and the first resizeNotch('idle')
+    // call — which the user kept calling out.
+    const BAR_W = 180;
     const BAR_H = NOTCH_H;
     const x = dx + Math.round((dw - BAR_W) / 2);
     const y = dy - NOTCH_TOP_EDGE_COMPENSATION;

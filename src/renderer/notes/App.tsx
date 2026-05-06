@@ -274,9 +274,31 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
   const toggleSection = (key: string) => setExpandedSections(p => ({ ...p, [key]: !p[key] }))
-  // SurfSense-style right panel: collapsible Documents column with tabs
-  const [rightPanelOpen, setRightPanelOpen] = useState(true)
-  const [rightTab, setRightTab] = useState<'sources' | 'materials' | 'study' | 'health'>('sources')
+
+  // ── Panel open/closed state — persisted to localStorage so the user's
+  //    layout preferences survive a relaunch (P2.1 + P2.4 audit fixes).
+  //    Pure-client state; no IPC needed. Reads run only on mount.
+  const readPersistedBool = (key: string, fallback: boolean): boolean => {
+    try {
+      const v = localStorage.getItem(key)
+      return v === null ? fallback : v === '1'
+    } catch { return fallback }
+  }
+  const readPersistedString = <T extends string>(key: string, allowed: readonly T[], fallback: T): T => {
+    try {
+      const v = localStorage.getItem(key)
+      return (v && (allowed as readonly string[]).includes(v)) ? (v as T) : fallback
+    } catch { return fallback }
+  }
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(() => readPersistedBool('studydesk:ui:leftOpen', true))
+  const [rightPanelOpen, setRightPanelOpen]   = useState(() => readPersistedBool('studydesk:ui:rightOpen', true))
+  const [rightTab, setRightTab]               = useState<'sources' | 'materials' | 'study' | 'health'>(
+    () => readPersistedString('studydesk:ui:rightTab', ['sources', 'materials', 'study', 'health'] as const, 'sources')
+  )
+  // Persist on change.
+  useEffect(() => { try { localStorage.setItem('studydesk:ui:leftOpen', leftSidebarOpen ? '1' : '0') } catch { /* ignore */ } }, [leftSidebarOpen])
+  useEffect(() => { try { localStorage.setItem('studydesk:ui:rightOpen', rightPanelOpen ? '1' : '0') } catch { /* ignore */ } }, [rightPanelOpen])
+  useEffect(() => { try { localStorage.setItem('studydesk:ui:rightTab', rightTab) } catch { /* ignore */ } }, [rightTab])
 
   async function refresh() {
     const [noteData, captureData, courseData, assignmentData, deadlineData, studyData, confusionData, alertData, classData] = await Promise.all([
@@ -641,18 +663,26 @@ export default function App() {
               const sourceNote = d.sourceId ? notes.find(n => n.id === d.sourceId) : undefined
               const pillLabel = isOverdue ? 'OVERDUE' : isToday ? 'TODAY' : `${daysLeft}d`
               const isUrgent = isOverdue || isToday
+              // Audit fix (P2.5): rows without a source note used to be
+              // styled as buttons (hover state, click affordance) but had
+              // onClick={undefined}. Now we collapse them to a non-button
+              // container with default cursor — no false promise of click.
+              const clickable = !!sourceNote
               return (
                 <button
                   key={d.id}
-                  onClick={sourceNote ? () => setSelected(sourceNote) : undefined}
+                  onClick={clickable ? () => setSelected(sourceNote!) : undefined}
+                  disabled={!clickable}
                   className={cn(
                     'w-full text-left px-2.5 py-2 rounded-lg border transition-colors group',
+                    !clickable && 'cursor-default',
                     isOverdue
-                      ? 'bg-red-500/12 border-red-500/30 hover:bg-red-500/18'
+                      ? clickable ? 'bg-red-500/12 border-red-500/30 hover:bg-red-500/18' : 'bg-red-500/12 border-red-500/30'
                       : isToday
-                        ? 'bg-amber-500/10 border-amber-500/25 hover:bg-amber-500/15'
-                        : 'bg-white/[0.03] border-white/[0.06] hover:bg-white/[0.06]'
+                        ? clickable ? 'bg-amber-500/10 border-amber-500/25 hover:bg-amber-500/15' : 'bg-amber-500/10 border-amber-500/25'
+                        : clickable ? 'bg-white/[0.03] border-white/[0.06] hover:bg-white/[0.06]' : 'bg-white/[0.03] border-white/[0.06]'
                   )}
+                  title={clickable ? 'Open source note' : 'No source note linked'}
                 >
                   <div className="flex items-center gap-2 mb-0.5">
                     <CalendarDays size={11} className={isOverdue ? 'text-red-300' : isToday ? 'text-amber-200' : 'text-white/55'} />
@@ -799,7 +829,7 @@ export default function App() {
               className="w-full px-3 py-2 rounded-md bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-[11.5px] text-white/80 hover:text-white transition-colors"
               title="Generate a browsable static HTML site from this course's notes"
             >
-              📦 Publish as static site…
+              Publish as static site…
             </button>
             <p className="text-[10px] text-white/35 mt-1 leading-snug">
               Renders this course's notes as a folder of HTML pages with built-in search.
@@ -957,10 +987,14 @@ export default function App() {
           Audit fix (P0.3): searchSpaceLabel uses the EXPLICIT selection,
           not currentCourse — currentCourse falls back to most-recent
           course, which made the header read e.g. "BUAD 6621" even when
-          the user clicked "All courses" on the rail. */}
+          the user clicked "All courses" on the rail.
+          Audit fix (P2.1): collapse chevron now actually collapses the
+          sidebar (hides the 280px column). Re-open via the small chip
+          rendered in the icon-rail area below. State persists. */}
+      {leftSidebarOpen ? (
       <LeftSidebar
         searchSpaceLabel={selectedCourse ? (selectedCourse.code ?? selectedCourse.name) : 'All Courses'}
-        onCollapse={() => {/* future: hide left sidebar */}}
+        onCollapse={() => setLeftSidebarOpen(false)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
       >
@@ -974,7 +1008,10 @@ export default function App() {
                 title={note.title}
                 meta={new Date(note.updatedAt).toLocaleDateString()}
                 icon={<FileText size={13} />}
-                badge={importedCount > 0 ? { label: `${importedCount} imported`, tone: 'imported' } : undefined}
+                // Audit fix (P2.3): badge counts parsed deadlines + assignments
+                // from the syllabus, NOT raw imported files. Old "imported"
+                // label was ambiguous vs the materials folder counter.
+                badge={importedCount > 0 ? { label: `${importedCount} parsed`, tone: 'imported' } : undefined}
                 active={selected?.id === note.id}
                 onClick={() => setSelected(note)}
               />
@@ -1027,6 +1064,19 @@ export default function App() {
           )) : <div className="px-2 py-2 text-[10.5px] text-white/35 italic">No captures</div>}
         </ShellSidebarSection>
       </LeftSidebar>
+      ) : (
+        // Collapsed-state pill — small "Show sidebar" affordance so users
+        // can re-open after collapsing. Mirrors the right-panel collapse
+        // pattern.
+        <button
+          onClick={() => setLeftSidebarOpen(true)}
+          className="hidden md:flex w-7 mr-2 items-start justify-center pt-2 text-white/40 hover:text-white/85 hover:bg-white/[0.04] rounded-md transition-colors"
+          title="Show sidebar"
+          aria-label="Show sidebar"
+        >
+          <ChevronRight size={14} />
+        </button>
+      )}
 
       {/* Main Panel — tabs + WorkspaceSurface (SurfSense MainContentPanel) */}
       <MainPanel
@@ -2043,10 +2093,10 @@ function QuizView({ selected, selectedText, courseId, studyItems, onSave }: { se
         <div>
           <p className="phase3-eyebrow">Quiz builder</p>
           <h1>{selected ? `Quiz from ${selected.title}` : 'Quiz builder'}</h1>
-          <span>Generate questions from selected document text. Review and edit before saving.</span>
+          <span>Extract question candidates from the selected document text using local heuristics. Review and edit before saving.</span>
         </div>
         {drafts.length === 0 && !savedNote
-          ? <button className="review-button" onClick={generate} disabled={!selectedText}><HelpCircle size={15} /> Generate questions</button>
+          ? <button className="review-button" onClick={generate} disabled={!selectedText}><HelpCircle size={15} /> Extract questions</button>
           : drafts.length > 0
             ? <div className="phase3-actions"><button className="review-button" onClick={handleSave} disabled={saving}><HelpCircle size={15} /> {saving ? 'Saving...' : 'Save quiz draft'}</button><button className="outline-button" onClick={saveAsStudyItems} disabled={saving}><ClipboardList size={15} /> Also save as study questions</button></div>
             : savedNote
@@ -2068,7 +2118,7 @@ function QuizView({ selected, selectedText, courseId, studyItems, onSave }: { se
       )}
       {selectedText && drafts.length === 0 && !savedNote && (
         <div className="phase3-panel">
-          <p className="empty-hint">Click "Generate questions" to create quiz candidates from the selected document.</p>
+          <p className="empty-hint">Click "Extract questions" to pull quiz candidates from the selected document via local heuristics.</p>
         </div>
       )}
       {drafts.length > 0 && (
@@ -2178,7 +2228,7 @@ function FlashcardsView({ selectedText, studyItems, courseId, onReviewStudyItem,
             </button>
           )}
           {drafts.length === 0
-            ? <button className="review-button" onClick={generate} disabled={!selectedText}><ClipboardList size={15} /> Generate from document</button>
+            ? <button className="review-button" onClick={generate} disabled={!selectedText}><ClipboardList size={15} /> Extract from document</button>
             : <button className="review-button" onClick={handleSave}><ClipboardList size={15} /> Save flashcards ({drafts.length})</button>
           }
         </div>

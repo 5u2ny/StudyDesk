@@ -113,7 +113,13 @@ interface QuizQuestionDraft {
   question: string
 }
 
-type WorkspaceTool = 'today' | 'dashboard' | 'daily' | 'quiz' | 'flashcards' | 'assignment' | 'syllabus' | 'class' | 'map' | 'timeline'
+// Ticket 1.1 — IA collapse 10 → 6 visible tabs.
+// The type union still carries every tool id so the demoted ones
+// (dashboard / quiz / assignment / syllabus / map / timeline) remain
+// reachable via the "More" overflow menu and direct activeTool calls.
+// Visible-in-tab-strip set is enforced in `tools` below.
+type WorkspaceTool = 'today' | 'daily' | 'deadlines' | 'flashcards' | 'materials' | 'class'
+                   | 'dashboard' | 'quiz' | 'assignment' | 'syllabus' | 'map' | 'timeline'
 type QuickAddKind = 'course' | 'deadline' | 'note' | 'assignment' | 'syllabus' | 'study' | 'question'
 
 interface QuickAddForm {
@@ -213,10 +219,12 @@ function defaultQuickAddForm(kind: QuickAddKind, selectedText = ''): QuickAddFor
   }
 }
 
+const ALL_TOOLS = ['today', 'daily', 'deadlines', 'flashcards', 'materials', 'class', 'dashboard', 'quiz', 'assignment', 'syllabus', 'map', 'timeline'] as const
+
 function initialWorkspaceTool(): WorkspaceTool {
   const tool = new URLSearchParams(window.location.search).get('tool')
-  return tool === 'dashboard' || tool === 'daily' || tool === 'quiz' || tool === 'flashcards' || tool === 'assignment' || tool === 'syllabus' || tool === 'class' || tool === 'map' || tool === 'timeline'
-    ? tool
+  return (ALL_TOOLS as readonly string[]).includes(tool ?? '')
+    ? (tool as WorkspaceTool)
     : 'today'
 }
 
@@ -603,21 +611,42 @@ export default function App() {
     await refresh()
   }
 
-  // Short labels keep all 10 tabs visible at the typical workspace
-  // width without horizontal scroll. Long-form tooltips on each
-  // button (set in WorkspaceShell via `title`) preserve discoverability.
+  // Ticket 1.1 — IA collapse 10 → 6.
+  // Visible-in-strip tabs, in user-facing order. Demoted tools
+  // (dashboard / quiz / assignment / syllabus / map / timeline)
+  // are reachable via the "More" overflow menu rendered below.
   const tools: Array<{ id: WorkspaceTool; label: string; icon: React.ReactNode }> = [
-    { id: 'today', label: 'Today', icon: <PanelTop size={14} /> },
-    { id: 'daily', label: 'Daily', icon: <CalendarDays size={14} /> },
-    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={14} /> },
-    { id: 'quiz', label: 'Quiz', icon: <HelpCircle size={14} /> },
-    { id: 'flashcards', label: 'Cards', icon: <ClipboardList size={14} /> },
-    { id: 'assignment', label: 'Parser', icon: <Sparkles size={14} /> },
-    { id: 'syllabus', label: 'Syllabus', icon: <FileText size={14} /> },
-    { id: 'class', label: 'Class', icon: <GraduationCap size={14} /> },
-    { id: 'map', label: 'Map', icon: <Network size={14} /> },
-    { id: 'timeline', label: 'Timeline', icon: <CalendarDays size={14} /> },
+    { id: 'today',      label: 'Today',     icon: <PanelTop size={14} /> },
+    { id: 'daily',      label: 'Daily',     icon: <CalendarDays size={14} /> },
+    { id: 'deadlines',  label: 'Deadlines', icon: <Clock3 size={14} /> },
+    { id: 'flashcards', label: 'Cards',     icon: <ClipboardList size={14} /> },
+    { id: 'materials',  label: 'Materials', icon: <Folder size={14} /> },
+    { id: 'class',      label: 'Class',     icon: <GraduationCap size={14} /> },
   ]
+  // Demoted but still routable. Used by the overflow menu.
+  const demotedTools: Array<{ id: WorkspaceTool; label: string; icon: React.ReactNode; hint?: string }> = [
+    { id: 'dashboard', label: 'Dashboard',         icon: <LayoutDashboard size={14} />, hint: 'Auto-shown when no course selected' },
+    { id: 'quiz',      label: 'Quiz builder',      icon: <HelpCircle size={14} />,      hint: 'Future: subtab inside Cards' },
+    { id: 'assignment',label: 'Assignment parser', icon: <Sparkles size={14} />,        hint: 'Future: + Import action' },
+    { id: 'syllabus',  label: 'Syllabus import',   icon: <FileText size={14} />,        hint: 'Future: + Import action' },
+    { id: 'map',       label: 'Relation map',      icon: <Network size={14} />,         hint: 'Future: view-mode toggle in Today' },
+    { id: 'timeline',  label: 'Timeline',          icon: <CalendarDays size={14} />,    hint: 'Future: view-mode toggle in Deadlines' },
+  ]
+  const [showMoreTools, setShowMoreTools] = useState(false)
+  const moreToolsRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!showMoreTools) return
+    const onDoc = (e: MouseEvent) => {
+      if (moreToolsRef.current && !moreToolsRef.current.contains(e.target as Node)) setShowMoreTools(false)
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowMoreTools(false) }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [showMoreTools])
 
   // ── SurfSense-style three-column shell render ─────────────────────────────
   const exportDeadlines = async () => {
@@ -1085,12 +1114,44 @@ export default function App() {
         onTabSelect={(id) => setActiveTool(id as WorkspaceTool)}
         rightActions={
           <>
-            {/* Audit fix (P0.2): the Bell + Settings gear buttons here had
-                no onClick — they were purely decorative, with the bell's
-                red-dot indicator hardcoded (not state-driven). Notifications
-                already surface in the LOCAL ALERTS section of the right
-                panel; Settings is reachable from the notch. Removed both
-                until either gets a real handler. */}
+            {/* Audit fix (P0.2): Bell + Settings gear were decorative no-ops
+                with a hardcoded red-dot. Removed. */}
+
+            {/* Ticket 1.1 — More-tools overflow menu. Surfaces the demoted
+                workspace tools (Dashboard, Quiz, Parser, Syllabus, Map,
+                Timeline) so they remain reachable after the IA collapse. */}
+            <div className="relative" ref={moreToolsRef}>
+              <button
+                onClick={() => setShowMoreTools(v => !v)}
+                aria-haspopup="menu"
+                aria-expanded={showMoreTools}
+                className={cn(
+                  'h-7 px-2 rounded-md flex items-center gap-1 text-[11px] font-medium whitespace-nowrap transition-colors',
+                  showMoreTools
+                    ? 'bg-white/[0.08] text-white'
+                    : 'text-white/55 hover:text-white/90 hover:bg-white/[0.04]'
+                )}
+                title="More tools"
+              >
+                <MoreHorizontal size={14} /> More
+              </button>
+              {showMoreTools && (
+                <div role="menu" className="absolute right-0 top-[calc(100%+4px)] min-w-[220px] p-1 rounded-lg bg-[#0c0c14] border border-white/[0.10] shadow-2xl z-50">
+                  {demotedTools.map(t => (
+                    <button
+                      key={t.id}
+                      role="menuitem"
+                      onClick={() => { setActiveTool(t.id); setShowMoreTools(false) }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-[12px] text-white/85 hover:bg-white/[0.06] text-left"
+                      title={t.hint}
+                    >
+                      <span className="shrink-0 text-white/55">{t.icon}</span>
+                      <span className="flex-1">{t.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             {!rightPanelOpen && (
               <button
                 onClick={() => setRightPanelOpen(true)}
@@ -1267,10 +1328,19 @@ function WorkspaceSurface({
       return <DashboardView courses={courses} deadlines={deadlines} studyItems={studyItems} alerts={alerts} onCompleteDeadline={onCompleteDeadline} onResolveAlert={onResolveAlert} onNavigate={onNavigate} />
     case 'daily':
       return <DailyJournalView notes={notes} currentCourse={currentCourse} onUpdate={onUpdate} onRefresh={onRefresh} onSelect={onSelect} />
+    case 'deadlines':
+      // Ticket 1.1: full-width deadlines list. View toggle for Timeline
+      // is rendered inline by DeadlinesView so the user can swap layouts.
+      return <DeadlinesView deadlines={deadlines} notes={notes} captures={captures} studyItems={studyItems} courses={courses} courseId={currentCourse?.id} onSelectNote={onSelect} onCompleteDeadline={onCompleteDeadline} />
     case 'quiz':
       return <QuizView selected={selected} selectedText={selectedText} courseId={currentCourse?.id} studyItems={studyItems} onSave={onQuizSave} />
     case 'flashcards':
       return <FlashcardsView selectedText={selectedText} studyItems={studyItems} courseId={currentCourse?.id} onReviewStudyItem={onReviewStudyItem} onSave={onFlashcardSave} onStatus={onStatus} />
+    case 'materials':
+      // Ticket 1.1: materials gets its own tab now. The right-rail
+      // Materials slot still exists for course-context-while-editing,
+      // but the canonical surface is here.
+      return <MaterialsView selectedCourse={currentCourse} notes={notes} onSelectNote={onSelect} onRefresh={onRefresh} onStatus={onStatus} />
     case 'assignment':
       return <AssignmentParserView selected={selected} selectedText={selectedText} courseId={currentCourse?.id} deadlines={deadlines} onSave={onAssignmentSave} />
     case 'syllabus':
@@ -1285,6 +1355,206 @@ function WorkspaceSurface({
     default:
       return <DocumentWorkspace selected={selected} selectedText={selectedText} captures={captures} notes={notes} courses={courses} riverIds={riverIds} currentCourse={currentCourse} linkedAssignment={linkedAssignment} onUpdate={onUpdate} onDelete={onDelete} onCreate={onCreate} onCreateFromFile={onCreateFromFile} onRefresh={onRefresh} onSelect={onSelect} onAddToRiver={onAddToRiver} onRemoveFromRiver={onRemoveFromRiver} onStatus={onStatus} />
   }
+}
+
+// ── Deadlines tab ─────────────────────────────────────────────────────────
+// Full-width view of all deadlines with a List ↔ Timeline view toggle.
+// Replaces the old `timeline` standalone tab — Timeline is now a render
+// mode within Deadlines, per Ticket 1.1.
+function DeadlinesView({
+  deadlines, notes, captures, studyItems, courses, courseId, onSelectNote, onCompleteDeadline,
+}: {
+  deadlines: AcademicDeadline[]
+  notes: Note[]
+  captures: Capture[]
+  studyItems: StudyItem[]
+  courses: Course[]
+  courseId?: string
+  onSelectNote: (n: Note) => void
+  onCompleteDeadline: (id: string) => Promise<void>
+}) {
+  const [view, setView] = useState<'list' | 'timeline'>('list')
+  const filtered = deadlines.filter(d => !courseId || d.courseId === courseId).sort((a, b) => a.deadlineAt - b.deadlineAt)
+  return (
+    <section className="phase3-card">
+      <header className="phase3-header">
+        <div>
+          <p className="phase3-eyebrow">Deadlines</p>
+          <h1>{filtered.length} upcoming</h1>
+          <span>List view groups by status; Timeline view plots by week.</span>
+        </div>
+        <div className="phase3-actions" role="tablist" aria-label="Deadlines view mode">
+          <button
+            role="tab"
+            aria-selected={view === 'list'}
+            onClick={() => setView('list')}
+            className={cn('outline-button', view === 'list' && 'review-button')}
+          >List</button>
+          <button
+            role="tab"
+            aria-selected={view === 'timeline'}
+            onClick={() => setView('timeline')}
+            className={cn('outline-button', view === 'timeline' && 'review-button')}
+          >Timeline</button>
+        </div>
+      </header>
+      {view === 'timeline' ? (
+        <TimelineView notes={notes} deadlines={deadlines} captures={captures} studyItems={studyItems} courses={courses} courseId={courseId} onSelectNote={onSelectNote} />
+      ) : filtered.length === 0 ? (
+        <div className="px-6 py-8 text-center text-white/45 text-[13px]">No deadlines for this course.</div>
+      ) : (
+        <div className="px-4 pb-4 space-y-1.5">
+          {filtered.map(d => {
+            const msDelta = d.deadlineAt - Date.now()
+            const isOverdue = msDelta < 0 && !d.completed
+            const isToday   = !isOverdue && msDelta < 86_400_000
+            const daysLeft  = Math.ceil(msDelta / 86_400_000)
+            const sourceNote = d.sourceId ? notes.find(n => n.id === d.sourceId) : undefined
+            const pillLabel = d.completed ? 'DONE' : isOverdue ? 'OVERDUE' : isToday ? 'TODAY' : `${daysLeft}d`
+            return (
+              <div
+                key={d.id}
+                className={cn(
+                  'px-3 py-2.5 rounded-lg border flex items-center gap-3',
+                  d.completed
+                    ? 'bg-emerald-500/8 border-emerald-500/20 opacity-70'
+                    : isOverdue ? 'bg-red-500/12 border-red-500/30'
+                    : isToday   ? 'bg-amber-500/10 border-amber-500/25'
+                    : 'bg-white/[0.03] border-white/[0.06]'
+                )}
+              >
+                <CalendarDays size={13} className={d.completed ? 'text-emerald-300' : isOverdue ? 'text-red-300' : isToday ? 'text-amber-200' : 'text-white/55'} />
+                <button
+                  onClick={sourceNote ? () => onSelectNote(sourceNote) : undefined}
+                  disabled={!sourceNote}
+                  className={cn('flex-1 min-w-0 text-left', !sourceNote && 'cursor-default')}
+                  title={sourceNote ? 'Open source note' : undefined}
+                >
+                  <div className="text-[13px] font-semibold text-white/95 truncate">{d.title}</div>
+                  <div className="text-[11px] text-white/55">{formatDue(d.deadlineAt)}{d.type ? ` · ${d.type}` : ''}</div>
+                </button>
+                <span className={cn(
+                  'shrink-0 px-2 py-0.5 rounded text-[10px] font-bold uppercase tabular-nums',
+                  d.completed ? 'bg-emerald-500/20 text-emerald-200'
+                    : isOverdue ? 'bg-red-500/22 text-red-200'
+                    : isToday ? 'bg-amber-500/20 text-amber-100'
+                    : 'bg-white/[0.06] text-white/60'
+                )}>{pillLabel}</span>
+                {!d.completed && (
+                  <button
+                    onClick={() => onCompleteDeadline(d.id)}
+                    className="shrink-0 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25 transition-colors"
+                  >Complete</button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </section>
+  )
+}
+
+// ── Materials tab ─────────────────────────────────────────────────────────
+// Full-width version of the materials right-rail panel. Same data, more
+// breathing room: imported file list, usage backref counts, publish-site
+// action. When no course is selected we tell the user to pick one
+// (folder watcher is per-course).
+function MaterialsView({
+  selectedCourse, notes, onSelectNote, onRefresh, onStatus,
+}: {
+  selectedCourse?: Course
+  notes: Note[]
+  onSelectNote: (n: Note) => void
+  onRefresh: () => void
+  onStatus: (msg: string) => void
+}) {
+  if (!selectedCourse) {
+    return (
+      <section className="phase3-card">
+        <header className="phase3-header">
+          <div>
+            <p className="phase3-eyebrow">Materials</p>
+            <h1>Pick a course</h1>
+            <span>Materials are organized per-course. Select one in the rail to manage its folder and imports.</span>
+          </div>
+        </header>
+      </section>
+    )
+  }
+  const imported = (selectedCourse.materialsImportedFiles ?? []).filter(r => r.noteId)
+  return (
+    <section className="phase3-card">
+      <header className="phase3-header">
+        <div>
+          <p className="phase3-eyebrow">Materials</p>
+          <h1>{selectedCourse.code ?? selectedCourse.name}</h1>
+          <span>{imported.length === 0 ? 'No imports yet — pick a folder to start auto-watching.' : `${imported.length} file${imported.length === 1 ? '' : 's'} auto-watched.`}</span>
+        </div>
+        <div className="phase3-actions">
+          <button
+            className="outline-button"
+            onClick={async () => {
+              try {
+                await ipc.invoke('course:pickMaterialsFolder', { courseId: selectedCourse.id })
+                onRefresh()
+                onStatus('Materials folder linked.')
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err)
+                onStatus(`Could not link folder: ${msg}`)
+              }
+            }}
+          ><Folder size={15} /> Pick folder</button>
+          <button
+            className="review-button"
+            onClick={async () => {
+              try {
+                const r = await ipc.invoke<{ written: boolean; outDir: string; noteCount: number; bytes: number } | null>('notes:publishStaticSite', { courseId: selectedCourse.id })
+                if (r?.written) onStatus(`Published ${r.noteCount} note${r.noteCount === 1 ? '' : 's'} to ${r.outDir}.`)
+                else onStatus('Publish cancelled.')
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err)
+                onStatus(`Publish failed: ${msg}`)
+              }
+            }}
+          ><Upload size={15} /> Publish as static site</button>
+        </div>
+      </header>
+      {imported.length === 0 ? (
+        <div className="px-6 py-8 text-center text-white/45 text-[13px]">
+          Drop a folder of PDFs / Markdown files into this course and StudyDesk will keep it in sync as you edit.
+        </div>
+      ) : (
+        <div className="px-4 pb-4 space-y-1">
+          {imported.map(r => {
+            const note = notes.find(n => n.id === r.noteId)
+            const fname = r.path.split('/').pop()
+            const usage = countMaterialUsages(notes, r.path)
+            return (
+              <button
+                key={r.path}
+                onClick={note ? () => onSelectNote(note) : undefined}
+                disabled={!note}
+                className={cn(
+                  'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors',
+                  note ? 'bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06]' : 'bg-white/[0.02] border border-white/[0.04] cursor-default'
+                )}
+              >
+                <FileText size={13} className="text-white/45 shrink-0" />
+                <span className="flex-1 min-w-0 truncate text-[13px] text-white/90">{fname}</span>
+                {usage > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/[0.08] text-white/70 shrink-0 tabular-nums">
+                    {usage}× cited
+                  </span>
+                )}
+                <span className="text-[10px] text-white/40 shrink-0">{new Date(r.importedAt).toLocaleDateString()}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </section>
+  )
 }
 
 function DocumentWorkspace({

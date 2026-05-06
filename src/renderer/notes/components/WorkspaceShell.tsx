@@ -351,7 +351,11 @@ export function RightPanel({ open, onClose, activeTab, onTabChange, sourcesSlot,
   if (!open) return null
 
   const tabs: Array<{ id: RightTab; label: string; icon: LucideIcon; badge?: number }> = [
-    { id: 'sources', label: 'Sources', icon: CalendarDays },
+    // Audit fix (P1.2): tab was labelled "Sources" but contains Upcoming
+    // Deadlines + Local Alerts. Renamed to "Inbox" so the label matches
+    // what the panel actually shows. Tab id stays 'sources' to avoid a
+    // store/state migration.
+    { id: 'sources', label: 'Inbox', icon: CalendarDays },
     { id: 'materials', label: 'Materials', icon: Folder },
     { id: 'study', label: 'Study', icon: Sparkles },
     { id: 'health', label: 'Health', icon: Target, badge: healthBadge },

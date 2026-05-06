@@ -698,6 +698,21 @@ export default function App() {
                         onClick={() => resolveAlert(alert.id)}
                         className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25 transition-colors"
                       >Resolve</button>
+                      {/* Audit fix (P1.1): the attentionAlerts:snooze IPC was
+                          declared, handler-implemented, and used by the
+                          floating window — but the workspace had no Snooze
+                          button. Added with two presets (1h, 1 day) so the
+                          common cases don't need a date picker. */}
+                      <button
+                        onClick={() => ipc.invoke('attentionAlerts:snooze', { id: alert.id, snoozedUntil: Date.now() + 60 * 60 * 1000 }).then(refresh)}
+                        className="px-2 py-0.5 rounded text-[10px] font-semibold text-white/55 hover:text-white/85 hover:bg-white/[0.06] transition-colors"
+                        title="Snooze for 1 hour"
+                      >Snooze 1h</button>
+                      <button
+                        onClick={() => ipc.invoke('attentionAlerts:snooze', { id: alert.id, snoozedUntil: Date.now() + 24 * 60 * 60 * 1000 }).then(refresh)}
+                        className="px-2 py-0.5 rounded text-[10px] font-semibold text-white/55 hover:text-white/85 hover:bg-white/[0.06] transition-colors"
+                        title="Snooze until tomorrow"
+                      >Tomorrow</button>
                       <button
                         onClick={() => ipc.invoke('attentionAlerts:dismiss', { id: alert.id }).then(refresh)}
                         className="px-2 py-0.5 rounded text-[10px] font-semibold text-white/55 hover:text-white/85 hover:bg-white/[0.06] transition-colors"
@@ -812,6 +827,20 @@ export default function App() {
               <div key={item.id} className="px-2.5 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06]">
                 <div className="text-[12px] font-semibold text-white/90 truncate">{item.front}</div>
                 <div className="text-[10px] text-white/45 mt-0.5 capitalize">{item.type}</div>
+                {/* Audit fix (P0.1): Study sub-tab was readonly. Add the
+                    same difficulty buttons the Cards tab uses so a user
+                    can actually grade items from the right rail without
+                    leaving Today. */}
+                <div className="flex items-center gap-1 mt-1.5">
+                  {(['again', 'hard', 'good', 'easy'] as const).map(d => (
+                    <button
+                      key={d}
+                      onClick={() => reviewStudyItem(item.id, d)}
+                      className="flex-1 px-1.5 py-1 rounded text-[10px] font-semibold uppercase tracking-wider bg-white/[0.04] hover:bg-white/[0.10] text-white/70 hover:text-white transition-colors"
+                      title={`Mark as ${d}`}
+                    >{d}</button>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
@@ -829,9 +858,19 @@ export default function App() {
             {unresolvedConfusions.slice(0, 5).map(q => (
               <div key={q.id} className="px-2.5 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06]">
                 <div className="text-[11.5px] text-white/85 leading-snug">{q.question}</div>
-                {q.nextStep && (
-                  <div className="text-[10px] text-blue-300 mt-1 capitalize">→ {q.nextStep.replace(/_/g, ' ')}</div>
-                )}
+                <div className="flex items-center justify-between mt-1.5 gap-2">
+                  {q.nextStep && (
+                    <div className="text-[10px] text-blue-300 capitalize flex-1 min-w-0 truncate">→ {q.nextStep.replace(/_/g, ' ')}</div>
+                  )}
+                  {/* Audit fix (P0.1): the Resolve action existed as IPC
+                      (confusion:resolve) and as a handler (resolveConfusion)
+                      but no button surfaced it from the right panel. */}
+                  <button
+                    onClick={() => resolveConfusion(q.id)}
+                    className="shrink-0 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 hover:text-emerald-100 transition-colors"
+                    title="Mark question as resolved"
+                  >Resolve</button>
+                </div>
               </div>
             ))}
           </div>
@@ -914,9 +953,13 @@ export default function App() {
         onAddCourse={() => openQuickAdd('course')}
       />
 
-      {/* Left Sidebar — sources/notes (SurfSense Sidebar) */}
+      {/* Left Sidebar — sources/notes (SurfSense Sidebar).
+          Audit fix (P0.3): searchSpaceLabel uses the EXPLICIT selection,
+          not currentCourse — currentCourse falls back to most-recent
+          course, which made the header read e.g. "BUAD 6621" even when
+          the user clicked "All courses" on the rail. */}
       <LeftSidebar
-        searchSpaceLabel={currentCourse ? (currentCourse.code ?? currentCourse.name) : 'All Courses'}
+        searchSpaceLabel={selectedCourse ? (selectedCourse.code ?? selectedCourse.name) : 'All Courses'}
         onCollapse={() => {/* future: hide left sidebar */}}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -992,19 +1035,18 @@ export default function App() {
         onTabSelect={(id) => setActiveTool(id as WorkspaceTool)}
         rightActions={
           <>
-            <button className="w-8 h-8 rounded-md flex items-center justify-center text-white/55 hover:text-white hover:bg-white/[0.06] transition-colors relative" title="Notifications">
-              <Bell size={14} />
-              <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-red-400" />
-            </button>
-            <button className="w-8 h-8 rounded-md flex items-center justify-center text-white/55 hover:text-white hover:bg-white/[0.06] transition-colors" title="Settings">
-              <Settings size={14} />
-            </button>
+            {/* Audit fix (P0.2): the Bell + Settings gear buttons here had
+                no onClick — they were purely decorative, with the bell's
+                red-dot indicator hardcoded (not state-driven). Notifications
+                already surface in the LOCAL ALERTS section of the right
+                panel; Settings is reachable from the notch. Removed both
+                until either gets a real handler. */}
             {!rightPanelOpen && (
               <button
                 onClick={() => setRightPanelOpen(true)}
                 className="ml-1 px-2.5 h-8 rounded-md flex items-center gap-1.5 text-[11.5px] font-semibold text-white/70 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-colors"
               >
-                <PanelTop size={12} className="rotate-90" /> Sources
+                <PanelTop size={12} className="rotate-90" /> Inbox
               </button>
             )}
           </>
@@ -1191,7 +1233,7 @@ function WorkspaceSurface({
       return <TimelineView notes={notes} deadlines={deadlines} captures={captures} studyItems={studyItems} courses={courses} courseId={currentCourse?.id} onSelectNote={onSelect} />
     case 'today':
     default:
-      return <DocumentWorkspace selected={selected} selectedText={selectedText} captures={captures} notes={notes} courses={courses} riverIds={riverIds} currentCourse={currentCourse} linkedAssignment={linkedAssignment} onUpdate={onUpdate} onDelete={onDelete} onCreate={onCreate} onCreateFromFile={onCreateFromFile} onRefresh={onRefresh} onSelect={onSelect} onAddToRiver={onAddToRiver} onRemoveFromRiver={onRemoveFromRiver} />
+      return <DocumentWorkspace selected={selected} selectedText={selectedText} captures={captures} notes={notes} courses={courses} riverIds={riverIds} currentCourse={currentCourse} linkedAssignment={linkedAssignment} onUpdate={onUpdate} onDelete={onDelete} onCreate={onCreate} onCreateFromFile={onCreateFromFile} onRefresh={onRefresh} onSelect={onSelect} onAddToRiver={onAddToRiver} onRemoveFromRiver={onRemoveFromRiver} onStatus={onStatus} />
   }
 }
 
@@ -1212,6 +1254,7 @@ function DocumentWorkspace({
   onSelect,
   onAddToRiver,
   onRemoveFromRiver,
+  onStatus,
 }: {
   selected: Note | null
   selectedText: string
@@ -1229,6 +1272,9 @@ function DocumentWorkspace({
   onCreateFromFile: (input: { title: string; content: string; courseId?: string; documentType?: Note['documentType'] }) => Promise<string>
   onRefresh: () => void
   onSelect: (n: Note) => void
+  /** Status-toast pass-through so export failures and other end-of-flow
+   *  events can surface to the user instead of dying in console.warn. */
+  onStatus: (msg: string) => void
 }) {
   const [questionStatus, setQuestionStatus] = useState('')
   // Attic revisions UI (DokuWiki port)
@@ -1481,7 +1527,14 @@ function DocumentWorkspace({
                         const { tipTapJsonToMarkdown } = await import('./lib/exportMarkdown')
                         const md = tipTapJsonToMarkdown(json)
                         await ipc.invoke('notes:exportMarkdown', { title: selected.title || 'note', markdown: md })
-                      } catch (err) { console.warn('[exportMarkdown]', err) }
+                        onStatus('Markdown exported.')
+                      } catch (err) {
+                        // Audit fix (P1.3): export errors used to die in
+                        // console.warn — user had no idea why nothing
+                        // happened. Now surfaces via the existing toast.
+                        const msg = err instanceof Error ? err.message : String(err)
+                        onStatus(`Markdown export failed: ${msg}`)
+                      }
                     }}
                   >Export .md</button>
                   <button
@@ -1489,8 +1542,13 @@ function DocumentWorkspace({
                     onClick={async () => {
                       setShowMore(false)
                       if (!selected) return
-                      try { await ipc.invoke('notes:exportPdf', { noteId: selected.id }) }
-                      catch (err) { console.warn('[exportPdf]', err) }
+                      try {
+                        await ipc.invoke('notes:exportPdf', { noteId: selected.id })
+                        onStatus('PDF exported.')
+                      } catch (err) {
+                        const msg = err instanceof Error ? err.message : String(err)
+                        onStatus(`PDF export failed: ${msg}`)
+                      }
                     }}
                   >Export PDF</button>
                   <button
@@ -1498,8 +1556,13 @@ function DocumentWorkspace({
                     onClick={async () => {
                       setShowMore(false)
                       if (!selected) return
-                      try { await ipc.invoke('notes:exportSlides', { noteId: selected.id }) }
-                      catch (err) { console.warn('[exportSlides]', err) }
+                      try {
+                        await ipc.invoke('notes:exportSlides', { noteId: selected.id })
+                        onStatus('Slide deck exported.')
+                      } catch (err) {
+                        const msg = err instanceof Error ? err.message : String(err)
+                        onStatus(`Slides export failed: ${msg}`)
+                      }
                     }}
                   >Export as slides</button>
                   <button

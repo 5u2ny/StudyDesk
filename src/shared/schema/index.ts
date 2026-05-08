@@ -204,6 +204,18 @@ export interface StudyItem {
   reviewCount: number;
   createdAt: number;
   updatedAt: number;
+  // T7 (REDESIGN_PLAN_V2): FSRS algorithm state. Optional + nullable
+  // so existing items keep working — first review under FSRS bootstraps
+  // these fields. The scheduler reads/writes them via ts-fsrs's Card
+  // shape, but we persist them flat on StudyItem for the focus-os
+  // store's plain-JSON contract.
+  fsrsStability?: number       // days expected above retrievability threshold
+  fsrsDifficulty?: number      // 1..10 — FSRS's per-card difficulty
+  fsrsLapses?: number          // count of times marked Again under FSRS
+  fsrsState?: 'new' | 'learning' | 'review' | 'relearning'
+  /** Last reviewed timestamp; used by both panic-mode ranking and the
+   *  FSRS scheduler. Distinct from updatedAt (which moves on any edit). */
+  lastReviewedAt?: number
 }
 
 export interface ConfusionItem {

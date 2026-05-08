@@ -14,6 +14,7 @@ import { QuizMeBackModal } from './components/QuizMeBackModal'
 import { PanicModeModal } from './components/PanicModeModal'
 import { selectPanicItems } from './lib/panicMode'
 import type { SearchHit } from './lib/searchIndex'
+import { routePaletteHit } from './lib/paletteRouter'
 import {
   ShellContainer,
   IconRail,
@@ -1281,22 +1282,22 @@ export default function App() {
         classSessions={classSessions}
         courses={courses}
         onPick={(hit: SearchHit) => {
-          // Route by entity kind. Each kind opens the most-useful surface
-          // for that record. Notes go to the editor; deadlines / assignments
-          // / class scope to their respective tabs and select the course.
-          if (hit.courseId) setSelectedCourseId(hit.courseId)
-          if (hit.kind === 'note' || hit.kind === 'capture' || hit.kind === 'study') {
-            const note = notes.find(n => n.id === hit.recordId)
-            if (note) { setSelected(note); setActiveTool('today') }
-          } else if (hit.kind === 'deadline') {
-            setActiveTool('deadlines')
-          } else if (hit.kind === 'assignment') {
-            setActiveTool('assignment')
-          } else if (hit.kind === 'class') {
-            setActiveTool('class')
-          } else if (hit.kind === 'course') {
-            setActiveTool('today')
+          // Bug 4 fix: route via the pure decision function in
+          // paletteRouter. The previous inline router treated 'capture'
+          // and 'study' results as if they were notes — looked up
+          // notes.find(...) which silently returned undefined for
+          // non-note ids, so clicking a capture or study hit did nothing.
+          const action = routePaletteHit(hit, notes)
+          if (action.type === 'open-note') {
+            if (action.note.courseId) setSelectedCourseId(action.note.courseId)
+            setSelected(action.note)
+            setActiveTool(action.tool)
+          } else if (action.type === 'switch-tool') {
+            if (action.courseId) setSelectedCourseId(action.courseId)
+            setActiveTool(action.tool)
           }
+          // 'noop' falls through silently — the only case is a note
+          // that's been deleted between index build and click.
         }}
       />
 

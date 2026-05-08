@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { focusStore } from '../store';
 import type { StudyItem } from '../../../shared/schema/index';
-import { fsrs, generatorParameters, Rating, State, createEmptyCard, type Card as FsrsCard } from 'ts-fsrs';
+import { fsrs, generatorParameters, Rating, State, createEmptyCard, type Card as FsrsCard, type Grade } from 'ts-fsrs';
 
 // T7 (REDESIGN_PLAN_V2): FSRS swap. Anki adopted FSRS in 2023 because
 // it measurably outperforms SM-2 on retention scheduling — fewer
@@ -35,7 +35,12 @@ const FSRS_PARAMS = generatorParameters({
 })
 const fsrsScheduler = fsrs(FSRS_PARAMS)
 
-const RATING_MAP: Record<NonNullable<StudyItem['difficulty']>, Rating> = {
+// Grade (not Rating) is what fsrs.next() accepts — Grade excludes
+// Rating.Manual. Typing the map as Grade catches at compile time the
+// fact that none of the four UI buttons should ever resolve to Manual.
+// (The renderer tsconfig was lenient enough to let `Rating` slide; the
+// stricter main tsconfig caught it. Tightening here so both pass.)
+const RATING_MAP: Record<NonNullable<StudyItem['difficulty']>, Grade> = {
   again: Rating.Again,
   hard:  Rating.Hard,
   good:  Rating.Good,
@@ -92,6 +97,11 @@ export const studyService = {
       id: randomUUID(),
       courseId: opts.courseId,
       sourceCaptureId: opts.sourceCaptureId,
+      // Bug 3 fix: these were silently dropped. T2 quiz-me-back flow
+      // depends on sourceNoteId; flashcardSyncService dedup depends on
+      // sourceCardKey.
+      sourceNoteId: opts.sourceNoteId,
+      sourceCardKey: opts.sourceCardKey,
       type: opts.type ?? 'flashcard',
       front: opts.front.trim(),
       back: opts.back,

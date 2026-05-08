@@ -61,7 +61,7 @@ export function selectPanicItems(allItems: ReadonlyArray<StudyItem>, scope: Pani
     // user never reviewed it, treat as fresh — moderate strength so
     // it gets surfaced but not as urgently as something they actively
     // failed last week.
-    const lastDifficulty = (item as any).difficulty ?? null
+    const lastDifficulty = item.difficulty ?? null
     const reviewCount = item.reviewCount ?? 0
     let baseStrength: number
     if (reviewCount === 0) {
@@ -75,7 +75,7 @@ export function selectPanicItems(allItems: ReadonlyArray<StudyItem>, scope: Pani
     // Decay: cards not seen recently are more likely to be forgotten.
     // Half-life ~7 days; matches the standard SR intuition without
     // bringing in full FSRS. Applies after first review only.
-    const lastReviewed = (item as any).lastReviewedAt ?? item.createdAt ?? now
+    const lastReviewed = item.lastReviewedAt ?? item.createdAt ?? now
     const daysSince = Math.max(0, (now - lastReviewed) / 86_400_000)
     const decay = reviewCount === 0 ? 1.0 : Math.pow(0.5, daysSince / 7)
 

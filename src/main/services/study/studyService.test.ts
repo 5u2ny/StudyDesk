@@ -27,6 +27,35 @@ import { studyService } from './studyService'
 
 beforeEach(() => { items.length = 0 })
 
+describe('studyService.create — source linkage propagation (Bug 3 prove-it)', () => {
+  it('preserves sourceNoteId when supplied (T2 quiz-me-back flow)', () => {
+    const created = studyService.create({
+      front: 'What is X?',
+      type: 'flashcard',
+      sourceNoteId: 'note-123',
+    } as any)
+    expect(created.sourceNoteId).toBe('note-123')
+  })
+
+  it('preserves sourceCardKey when supplied (heading-sync dedup)', () => {
+    const created = studyService.create({
+      front: 'What is X?',
+      type: 'flashcard',
+      sourceCardKey: 'abc123',
+    } as any)
+    expect(created.sourceCardKey).toBe('abc123')
+  })
+
+  it('preserves sourceCaptureId (already worked, regression guard)', () => {
+    const created = studyService.create({
+      front: 'Q',
+      type: 'flashcard',
+      sourceCaptureId: 'capture-7',
+    })
+    expect(created.sourceCaptureId).toBe('capture-7')
+  })
+})
+
 describe('studyService.review (FSRS)', () => {
   it('schedules a fresh card forward when reviewed Good', () => {
     const c = studyService.create({ front: 'Q', type: 'flashcard' })

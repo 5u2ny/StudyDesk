@@ -4460,3 +4460,247 @@ button[class*="sidebar-row"][class*="active"],
 .cmdk-input:focus-visible {
   outline: none; /* the wrapper handles it */
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   STUDYDESK DESIGN v2 · LAYER 3 — final polish pass
+   ═══════════════════════════════════════════════════════════════════
+   The remaining surfaces that didn't fully migrate in layer 2 — alert
+   resolve buttons, deadline pills, the workspace overlap zones. */
+
+/* ── ATTENTION ALERT cards on the right rail ──
+   Replace the loud emerald Resolve button + amber dot with the
+   semantic palette. */
+.studydesk-alert button:first-of-type,
+.flex.items-center.gap-2 button[class*="bg-emerald"],
+button[class*="bg-emerald-500"] {
+  background: rgba(93, 184, 144, 0.13) !important;
+  color: var(--sd-success) !important;
+  border: 1px solid rgba(93, 184, 144, 0.25) !important;
+  font-size: var(--sd-text-2xs) !important;
+  font-weight: var(--sd-weight-bold) !important;
+  letter-spacing: var(--sd-track-eyebrow) !important;
+  text-transform: uppercase;
+  padding: 3px 9px !important;
+  border-radius: var(--sd-radius-chip) !important;
+}
+.studydesk-alert button:first-of-type:hover,
+button[class*="bg-emerald-500"]:hover {
+  background: rgba(93, 184, 144, 0.20) !important;
+  border-color: rgba(93, 184, 144, 0.40) !important;
+}
+
+/* Alert dot before the title — use semantic warn instead of amber-500. */
+[class*="bg-amber-400"] {
+  background: var(--sd-warn) !important;
+  opacity: 0.85;
+}
+
+/* ── DEADLINE PILLS on the right rail ──
+   OVERDUE pill needs to read urgent without yelling. Redo as a
+   solid-fill chip with the semantic danger color, not a tinted box. */
+span[class*="bg-red-500\\/22"],
+span[class*="bg-red-500\\/20"] {
+  background: rgba(217, 122, 133, 0.18) !important;
+  color: var(--sd-danger) !important;
+  border: 1px solid rgba(217, 122, 133, 0.35) !important;
+  font-size: var(--sd-text-2xs) !important;
+  font-weight: var(--sd-weight-bold) !important;
+  letter-spacing: 0.06em !important;
+  padding: 1.5px 6px !important;
+  border-radius: 4px !important;
+}
+span[class*="bg-amber-500\\/20"] {
+  background: rgba(232, 178, 98, 0.15) !important;
+  color: var(--sd-warn) !important;
+  border: 1px solid rgba(232, 178, 98, 0.30) !important;
+  font-size: var(--sd-text-2xs) !important;
+  font-weight: var(--sd-weight-bold) !important;
+  padding: 1.5px 6px !important;
+  border-radius: 4px !important;
+}
+
+/* Deadline row — make the underlying card lighter on overdue too. */
+button[class*="bg-red-500\\/12"],
+button[class*="bg-red-500\\/10"] {
+  background: rgba(217, 122, 133, 0.06) !important;
+  border-color: rgba(217, 122, 133, 0.18) !important;
+}
+button[class*="bg-amber-500\\/10"] {
+  background: rgba(232, 178, 98, 0.05) !important;
+  border-color: rgba(232, 178, 98, 0.15) !important;
+}
+
+/* ── SECTION SPACER — vertical rhythm in the right rail and sidebar ──
+   The right rail's UPCOMING DEADLINES / LOCAL ALERTS / STUDY QUEUE
+   eyebrows need real space above them so the eye doesn't see the
+   list as one indistinguishable block. */
+.text-\[10px\].font-bold.uppercase.tracking-wider {
+  margin-top: var(--sd-space-4);
+  font-size: var(--sd-text-2xs);
+  font-weight: var(--sd-weight-bold);
+  letter-spacing: var(--sd-track-eyebrow);
+  color: var(--sd-fg-3);
+}
+.flex.items-center.justify-between.mb-2 .text-\[10px\] {
+  margin-top: 0; /* reset for headers that already sit in a flex row */
+}
+
+/* ── THE "UNRESOLVED QUESTIONS" body block on the Study sub-tab ──
+   Currently rendered as run-on text in default styling. Force serif
+   reading mode here so it visually matches the editor. */
+.studydesk-document-card aside,
+[class*="space-y-1"] > div[class*="bg-white"] > div[class*="text-white"] {
+  font-family: var(--sd-font-serif);
+}
+
+/* ── BUTTON GROUPS · the difficulty review row ──
+   AGAIN / HARD / GOOD / EASY in caps with a single thin underline
+   under the active one. Currently they all look identical. */
+button[class*="px-1.5 py-1 rounded text-[10px]"],
+.review-actions button {
+  font-family: var(--sd-font-ui);
+  font-size: var(--sd-text-2xs);
+  font-weight: var(--sd-weight-bold);
+  letter-spacing: var(--sd-track-eyebrow);
+  text-transform: uppercase;
+  background: transparent;
+  border: 1px solid var(--sd-line);
+  color: var(--sd-fg-3);
+  padding: 5px 0;
+  border-radius: var(--sd-radius-chip);
+  transition: background var(--sd-trans-fast), color var(--sd-trans-fast), border-color var(--sd-trans-fast);
+}
+button[class*="px-1.5 py-1 rounded text-[10px]"]:hover,
+.review-actions button:hover {
+  background: var(--sd-ink-2);
+  color: var(--sd-fg-1);
+  border-color: var(--sd-line-strong);
+}
+
+/* ── THE GLASS-MORPHIC FORGIVE pill — add a quiet underline so it
+   reads as a special action, not a destructive one. */
+.outline-button[title*="Forgive"]:not(:hover),
+.outline-button[title*="forgive"]:not(:hover) {
+  color: var(--sd-fg-2);
+  border-color: rgba(232, 178, 98, 0.20);
+  background: rgba(232, 178, 98, 0.04);
+}
+
+/* ── COVERAGE BADGE — reads as a citation receipt, not a metric ── */
+.coverage-badge {
+  font-family: var(--sd-font-ui);
+  font-size: var(--sd-text-2xs);
+  font-weight: var(--sd-weight-semi);
+  letter-spacing: 0.04em;
+  background: var(--sd-ink-2);
+  color: var(--sd-fg-3);
+  border: 1px solid var(--sd-line);
+  border-radius: var(--sd-radius-chip);
+  padding: 2px 8px;
+}
+.coverage-badge.is-stale {
+  background: rgba(232, 178, 98, 0.07);
+  color: var(--sd-warn);
+  border-color: rgba(232, 178, 98, 0.22);
+}
+
+/* ── THE BREADCRUMB row · Course • Type ──
+   Slightly taller, stronger separator dot, accent for the "Create
+   question" CTA only. */
+.document-context-row {
+  padding: var(--sd-space-2) var(--sd-space-5);
+  background: transparent;
+  border-bottom: 1px solid var(--sd-line);
+  font-family: var(--sd-font-ui);
+  font-size: var(--sd-text-xs);
+  letter-spacing: var(--sd-track-body);
+}
+.document-context-row > span {
+  color: var(--sd-fg-3);
+}
+.document-context-row button {
+  color: var(--sd-accent);
+  font-weight: var(--sd-weight-medium);
+}
+
+/* ── DOCUMENT MORE menu — restraint pass ──
+   Was already glassy; trim padding + tighten copy. */
+.document-more-popover {
+  background: var(--sd-ink-2);
+  border-color: var(--sd-line-strong);
+  border-radius: var(--sd-radius-card);
+  box-shadow: var(--sd-shadow-2);
+}
+.document-more-popover button[role="menuitem"] {
+  font-size: var(--sd-text-sm);
+  letter-spacing: var(--sd-track-body);
+  color: var(--sd-fg-2);
+  padding: 8px 12px;
+}
+.document-more-popover button[role="menuitem"]:hover {
+  background: var(--sd-ink-3);
+  color: var(--sd-fg-1);
+}
+.document-more-popover button[role="menuitem"].is-destructive {
+  color: var(--sd-danger);
+}
+
+/* ── INPUT + TEXTAREA ──
+   Standardize all inputs to the same hairline + focus accent. */
+input[type="text"],
+input[type="search"],
+textarea,
+.syllabus-paste-area,
+.syllabus-inline-edit {
+  font-family: var(--sd-font-ui);
+  font-size: var(--sd-text-sm);
+  letter-spacing: var(--sd-track-body);
+  background: var(--sd-ink-1);
+  border: 1px solid var(--sd-line);
+  border-radius: var(--sd-radius-chip);
+  color: var(--sd-fg-1);
+  padding: 8px 10px;
+  transition: border-color var(--sd-trans-fast), background var(--sd-trans-fast);
+}
+input[type="text"]:focus,
+input[type="search"]:focus,
+textarea:focus,
+.syllabus-paste-area:focus,
+.syllabus-inline-edit:focus {
+  outline: none;
+  border-color: var(--sd-accent-stroke);
+  background: var(--sd-ink-2);
+}
+input::placeholder, textarea::placeholder {
+  color: var(--sd-fg-4);
+}
+
+/* ── TIMELINE VIEW — finer chrome, more breathing ── */
+.timeline-week-label strong {
+  font-family: var(--sd-font-display);
+  font-size: var(--sd-text-md);
+  font-weight: var(--sd-weight-semi);
+  letter-spacing: var(--sd-track-heading);
+  color: var(--sd-fg-1);
+}
+.timeline-week-label em {
+  font-style: normal;
+  font-size: var(--sd-text-xs);
+  color: var(--sd-fg-4);
+  letter-spacing: var(--sd-track-body);
+}
+.timeline-item {
+  background: var(--sd-ink-1);
+  border-color: var(--sd-line);
+  border-radius: var(--sd-radius-chip);
+}
+.timeline-item:hover {
+  background: var(--sd-ink-2);
+}
+
+/* ── SCRATCH pane (sidecar) — reading mode too ── */
+.scratch-pane,
+[class*="SCRATCH"] {
+  font-family: var(--sd-font-serif);
+  color: var(--sd-fg-2);
+}

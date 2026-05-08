@@ -10,6 +10,7 @@ import { filterItems } from '@shared/lib/filterDsl'
 import { lintNotes, summarizeIssues, type LintIssue } from './lib/noteHealth'
 import { isDuplicateQuestion, isDuplicateFlashcard } from './lib/studyDedup'
 import { CommandPalette } from './components/CommandPalette'
+import { QuizMeBackModal } from './components/QuizMeBackModal'
 import type { SearchHit } from './lib/searchIndex'
 import {
   ShellContainer,
@@ -1422,7 +1423,7 @@ function WorkspaceSurface({
       return <TimelineView notes={notes} deadlines={deadlines} captures={captures} studyItems={studyItems} courses={courses} courseId={currentCourse?.id} onSelectNote={onSelect} />
     case 'today':
     default:
-      return <DocumentWorkspace selected={selected} selectedText={selectedText} captures={captures} notes={notes} courses={courses} riverIds={riverIds} currentCourse={currentCourse} linkedAssignment={linkedAssignment} onUpdate={onUpdate} onDelete={onDelete} onCreate={onCreate} onCreateFromFile={onCreateFromFile} onRefresh={onRefresh} onSelect={onSelect} onAddToRiver={onAddToRiver} onRemoveFromRiver={onRemoveFromRiver} onStatus={onStatus} />
+      return <DocumentWorkspace selected={selected} selectedText={selectedText} captures={captures} notes={notes} courses={courses} studyItems={studyItems} riverIds={riverIds} currentCourse={currentCourse} linkedAssignment={linkedAssignment} onUpdate={onUpdate} onDelete={onDelete} onCreate={onCreate} onCreateFromFile={onCreateFromFile} onRefresh={onRefresh} onSelect={onSelect} onAddToRiver={onAddToRiver} onRemoveFromRiver={onRemoveFromRiver} onStatus={onStatus} />
   }
 }
 
@@ -1632,6 +1633,7 @@ function DocumentWorkspace({
   captures,
   notes,
   courses,
+  studyItems,
   riverIds,
   currentCourse,
   linkedAssignment,
@@ -1650,6 +1652,7 @@ function DocumentWorkspace({
   captures: Capture[]
   notes: Note[]
   courses: Course[]
+  studyItems: StudyItem[]
   riverIds: string[]
   onAddToRiver: (noteId: string) => void
   onRemoveFromRiver: (noteId: string) => void
@@ -1668,6 +1671,19 @@ function DocumentWorkspace({
   const [questionStatus, setQuestionStatus] = useState('')
   // Attic revisions UI (DokuWiki port)
   const [showRevisions, setShowRevisions] = useState(false)
+  // T2 (REDESIGN_PLAN_V2): "Quiz me back" — extract candidate cards
+  // from the active note and let the user grade Keep/Skip/Edit each
+  // before any of them become real study items. AI-as-draft principle.
+  const [showQuizMeBack, setShowQuizMeBack] = useState(false)
+  const [quizCandidates, setQuizCandidates] = useState<ReadonlyArray<import('./lib/extractCards').CardCandidate>>([])
+  function openQuizMeBack() {
+    if (!selected) return
+    import('./lib/extractCards').then(({ extractCardCandidates }) => {
+      const cands = extractCardCandidates(selected.content)
+      setQuizCandidates(cands)
+      setShowQuizMeBack(true)
+    })
+  }
   // UX: collapse the noisy export/history/delete row behind a single
   // "More" menu so the document header is breathable. Inline buttons
   // remain only for actions that are contextual (Create question on
@@ -1956,6 +1972,10 @@ function DocumentWorkspace({
                   >Export as slides</button>
                   <button
                     role="menuitem"
+                    onClick={() => { setShowMore(false); openQuizMeBack() }}
+                  >Quiz me back…</button>
+                  <button
+                    role="menuitem"
                     onClick={() => { setShowMore(false); setShowRevisions(true) }}
                   >Version history…</button>
                   <div className="document-more-divider" role="separator" />
@@ -2092,6 +2112,28 @@ function DocumentWorkspace({
           </div>
         </div>
       )}
+      {/* T2: Quiz-me-back review modal — extract candidates, user keeps/skips/edits, kept ones become study items. */}
+      <QuizMeBackModal
+        open={showQuizMeBack}
+        onClose={() => setShowQuizMeBack(false)}
+        candidates={quizCandidates}
+        existingFronts={studyItems.map(s => s.front ?? '')}
+        onCommit={async (kept) => {
+          let created = 0
+          try {
+            for (const c of kept) {
+              await ipc.invoke('study:create', { front: c.front, back: c.back, type: 'flashcard', courseId: currentCourse?.id, sourceNoteId: selected?.id })
+              created++
+            }
+            onStatus(`${created} card${created === 1 ? '' : 's'} added to study queue.`)
+            onRefresh()
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err)
+            onStatus(`Stopped after ${created}/${kept.length}: ${msg}`)
+          }
+        }}
+      />
+
       {/* Revisions modal (DokuWiki attic port) */}
       {showRevisions && selected && (
         <div className="revisions-modal-backdrop" onClick={() => setShowRevisions(false)}>

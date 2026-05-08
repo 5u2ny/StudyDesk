@@ -1040,6 +1040,16 @@ body {
   color: rgba(255, 184, 77, 0.75);
   text-decoration: none;
 }
+/* T6: page anchor — surfaces "· p. N" after the title when sourcePage > 0. */
+.ProseMirror aside.source-quote[data-source-page]:not([data-source-page="0"])::after {
+  content: "📄 " attr(data-source-title) " · p. " attr(data-source-page);
+}
+/* T6: timestamp anchor — surfaces "· HH:MM" instead. If both are set
+   (rare but legal), the timestamp wins because it's more specific to
+   what the user pinned. */
+.ProseMirror aside.source-quote[data-source-timestamp]:not([data-source-timestamp=""])::after {
+  content: "▶ " attr(data-source-title) " · " attr(data-source-timestamp);
+}
 
 /* ── Slash command popup (AppFlowy-inspired) ───────────────────────────── */
 .slash-popup {

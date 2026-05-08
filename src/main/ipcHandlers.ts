@@ -344,7 +344,7 @@ export function setupIPC() {
     return { written: true, path: result.filePath, bytes: Buffer.byteLength(r.markdown, 'utf-8') };
   });
 
-  ipcMain.handle('shell:openSourceFile', async (_e, r: { path: string }) => {
+  ipcMain.handle('shell:openSourceFile', async (_e, r: { path: string; page?: number; timestamp?: string }) => {
     const courses = coursesService.list();
     const allowed = courses.some(c =>
       c.materialsFolderPath && r.path.startsWith(c.materialsFolderPath)
@@ -352,6 +352,24 @@ export function setupIPC() {
     if (!allowed) {
       throw new Error('Path not inside any configured course materials folder');
     }
+    // T6: best-effort page/timestamp anchors. macOS Preview accepts
+    // file://...#page=N via shell.openExternal but flakily; we try
+    // it for PDFs, fall back to plain shell.openPath for everything
+    // else. shell.openExternal honors fragment for many apps that
+    // shell.openPath would strip — that's why we branch.
+    if (r.page && r.page > 0 && r.path.toLowerCase().endsWith('.pdf')) {
+      const fileUrl = 'file://' + encodeURI(r.path).replace(/'/g, "%27") + '#page=' + r.page;
+      try {
+        await shell.openExternal(fileUrl);
+        return true;
+      } catch {
+        // fall through to plain open
+      }
+    }
+    // Audio/video timestamp seeking would require launching a custom
+    // player with a CLI flag. The system default player rarely accepts
+    // such args, so for now we just open the file — the timestamp is
+    // visible in the quote chrome so the user can scrub manually.
     const errMsg = await shell.openPath(r.path);
     if (errMsg) throw new Error(errMsg);
     return true;

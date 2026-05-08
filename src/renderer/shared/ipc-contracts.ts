@@ -48,7 +48,10 @@ export interface IPCContracts {
   'folder:readFile': { req: { path: string }; res: ArrayBuffer };
   'folder:recordImport': { req: { courseId: string; record: any }; res: boolean };
   'folder:rescan': { req: undefined; res: boolean };
-  'shell:openSourceFile': { req: { path: string }; res: boolean };
+  // T6 (REDESIGN_PLAN_V2): page + timestamp anchors. Both optional;
+  // the handler tries to seek but always falls back to "just open"
+  // if the OS / app combo doesn't support the anchor.
+  'shell:openSourceFile': { req: { path: string; page?: number; timestamp?: string }; res: boolean };
   'notes:exportMarkdown': { req: { title: string; markdown: string }; res: { written: boolean; path: string; bytes: number } | null };
   'notes:exportPdf': { req: { noteId: string }; res: { written: boolean; path: string; bytes: number } | null };
   'notes:exportSlides': { req: { noteId: string }; res: { written: boolean; path: string; bytes: number } | null };

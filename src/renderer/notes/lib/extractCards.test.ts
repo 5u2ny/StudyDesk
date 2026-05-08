@@ -93,11 +93,14 @@ describe('extractCardCandidates', () => {
     expect(cards[0].front).toBe('Beta')
   })
 
-  it('rejects definitions where the term is too short or too long', () => {
-    const c = doc([
-      para('I am here.'),                        // 'I' too short
-      para('A word that is too long ' + 'x'.repeat(100) + ' is something.'),  // term > 80 chars
-    ])
-    expect(extractCardCandidates(c)).toEqual([])
+  it('rejects definitions where the front term is outside 3-80 chars', () => {
+    // Front too short (<3 chars before the verb)
+    const tooShort = doc([para('AB is here today.')])
+    expect(extractCardCandidates(tooShort)).toEqual([])
+    // Front too long (>80 chars before the verb) — single very long
+    // term phrase, no other "is/are/means" inside it.
+    const front = 'X'.repeat(85)
+    const tooLong = doc([para(`${front} is something defined.`)])
+    expect(extractCardCandidates(tooLong)).toEqual([])
   })
 })

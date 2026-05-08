@@ -11,6 +11,8 @@ import { lintNotes, summarizeIssues, type LintIssue } from './lib/noteHealth'
 import { isDuplicateQuestion, isDuplicateFlashcard } from './lib/studyDedup'
 import { CommandPalette } from './components/CommandPalette'
 import { QuizMeBackModal } from './components/QuizMeBackModal'
+import { PanicModeModal } from './components/PanicModeModal'
+import { selectPanicItems } from './lib/panicMode'
 import type { SearchHit } from './lib/searchIndex'
 import {
   ShellContainer,
@@ -316,6 +318,11 @@ export default function App() {
   // NotebookLM's #1 unmet need. State lifted to App so the hotkey can
   // be a single global listener.
   const [paletteOpen, setPaletteOpen] = useState(false)
+  // T3 (REDESIGN_PLAN_V2): panic mode. Shows the 20 most-likely-to-
+  // fail cards in the current course scope, ranked by a local
+  // retrievability heuristic. State at App level so the trigger can
+  // live anywhere (cmdk action / course header / FlashcardsView).
+  const [panicOpen, setPanicOpen] = useState(false)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -1238,6 +1245,7 @@ export default function App() {
           onAddToRiver={addToRiver}
           onRemoveFromRiver={removeFromRiver}
           onNavigate={setActiveTool}
+          onOpenPanic={() => setPanicOpen(true)}
         />
       </MainPanel>
 
@@ -1289,6 +1297,16 @@ export default function App() {
           } else if (hit.kind === 'course') {
             setActiveTool('today')
           }
+        }}
+      />
+
+      {/* T3: Panic mode — surfaces the most-likely-to-fail cards. */}
+      <PanicModeModal
+        open={panicOpen}
+        onClose={() => setPanicOpen(false)}
+        items={selectPanicItems(visibleStudyItems, { courseId: currentCourse?.id, limit: 20 })}
+        onReview={async (id, difficulty) => {
+          await reviewStudyItem(id, difficulty)
         }}
       />
 
@@ -1354,6 +1372,7 @@ function WorkspaceSurface({
   onAddToRiver,
   onRemoveFromRiver,
   onNavigate,
+  onOpenPanic,
 }: {
   activeTool: WorkspaceTool
   selected: Note | null
@@ -1392,6 +1411,8 @@ function WorkspaceSurface({
   /** Tab navigation, threaded down so widgets like the dashboard's
    *  "Review day" button can switch tabs without lifting state. */
   onNavigate: (tool: WorkspaceTool) => void
+  /** Opens the T3 panic-mode modal scoped to current course. */
+  onOpenPanic: () => void
 }) {
   switch (activeTool) {
     case 'dashboard':
@@ -1405,7 +1426,7 @@ function WorkspaceSurface({
     case 'quiz':
       return <QuizView selected={selected} selectedText={selectedText} courseId={currentCourse?.id} studyItems={studyItems} onSave={onQuizSave} />
     case 'flashcards':
-      return <FlashcardsView selectedText={selectedText} studyItems={studyItems} courseId={currentCourse?.id} onReviewStudyItem={onReviewStudyItem} onSave={onFlashcardSave} onStatus={onStatus} />
+      return <FlashcardsView selectedText={selectedText} studyItems={studyItems} courseId={currentCourse?.id} onReviewStudyItem={onReviewStudyItem} onSave={onFlashcardSave} onStatus={onStatus} onOpenPanic={onOpenPanic} />
     case 'materials':
       // Ticket 1.1: materials gets its own tab now. The right-rail
       // Materials slot still exists for course-context-while-editing,
@@ -2516,7 +2537,7 @@ function QuizView({ selected, selectedText, courseId, studyItems, onSave }: { se
   )
 }
 
-function FlashcardsView({ selectedText, studyItems, courseId, onReviewStudyItem, onSave, onStatus }: { selectedText: string; studyItems: StudyItem[]; courseId?: string; onReviewStudyItem: (id: string, difficulty: NonNullable<StudyItem['difficulty']>) => Promise<void>; onSave: () => void; onStatus: (msg: string) => void }) {
+function FlashcardsView({ selectedText, studyItems, courseId, onReviewStudyItem, onSave, onStatus, onOpenPanic }: { selectedText: string; studyItems: StudyItem[]; courseId?: string; onReviewStudyItem: (id: string, difficulty: NonNullable<StudyItem['difficulty']>) => Promise<void>; onSave: () => void; onStatus: (msg: string) => void; onOpenPanic: () => void }) {
   const [drafts, setDrafts] = useState<FlashcardDraft[]>([])
 
   function generate() {
@@ -2629,6 +2650,18 @@ function FlashcardsView({ selectedText, studyItems, courseId, onReviewStudyItem,
               title="Reset due dates on overdue cards back to today. Review history is preserved — only the schedule changes."
             >
               Forgive {overdueCount}
+            </button>
+          )}
+          {/* T3 panic mode: surfaces here too — same surface where
+              users already manage their cards. Only renders when
+              there's enough material to rank. */}
+          {drafts.length === 0 && studyItems.length >= 5 && (
+            <button
+              className="outline-button"
+              onClick={onOpenPanic}
+              title="Show the cards you're most likely to fail. Drill these first."
+            >
+              Plan cram
             </button>
           )}
           {drafts.length === 0 && (

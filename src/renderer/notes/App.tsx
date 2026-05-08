@@ -9,6 +9,8 @@ import { TimelineView } from './components/TimelineView'
 import { filterItems } from '@shared/lib/filterDsl'
 import { lintNotes, summarizeIssues, type LintIssue } from './lib/noteHealth'
 import { isDuplicateQuestion, isDuplicateFlashcard } from './lib/studyDedup'
+import { CommandPalette } from './components/CommandPalette'
+import type { SearchHit } from './lib/searchIndex'
 import {
   ShellContainer,
   IconRail,
@@ -307,6 +309,22 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem('studydesk:ui:leftOpen', leftSidebarOpen ? '1' : '0') } catch { /* ignore */ } }, [leftSidebarOpen])
   useEffect(() => { try { localStorage.setItem('studydesk:ui:rightOpen', rightPanelOpen ? '1' : '0') } catch { /* ignore */ } }, [rightPanelOpen])
   useEffect(() => { try { localStorage.setItem('studydesk:ui:rightTab', rightTab) } catch { /* ignore */ } }, [rightTab])
+
+  // T1 (REDESIGN_PLAN_V2): cross-course command palette. Cmd+K from
+  // anywhere opens the universal search modal. The wedge attack on
+  // NotebookLM's #1 unmet need. State lifted to App so the hotkey can
+  // be a single global listener.
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setPaletteOpen(o => !o)
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
 
   // T4 (anti-shame): late-night mode. Between 22:00 and 05:00 the
   // workspace dials down: muted accents, lower contrast, smaller
@@ -1241,6 +1259,37 @@ export default function App() {
           badge={orderedVisibleDeadlines.filter(d => Math.ceil((d.deadlineAt - Date.now()) / 86_400_000) <= 1).length}
         />
       )}
+
+      {/* T1: Cross-course command palette. Cmd+K opens it from anywhere. */}
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        notes={notes}
+        captures={captures}
+        studyItems={studyItems}
+        deadlines={deadlines}
+        assignments={assignments}
+        classSessions={classSessions}
+        courses={courses}
+        onPick={(hit: SearchHit) => {
+          // Route by entity kind. Each kind opens the most-useful surface
+          // for that record. Notes go to the editor; deadlines / assignments
+          // / class scope to their respective tabs and select the course.
+          if (hit.courseId) setSelectedCourseId(hit.courseId)
+          if (hit.kind === 'note' || hit.kind === 'capture' || hit.kind === 'study') {
+            const note = notes.find(n => n.id === hit.recordId)
+            if (note) { setSelected(note); setActiveTool('today') }
+          } else if (hit.kind === 'deadline') {
+            setActiveTool('deadlines')
+          } else if (hit.kind === 'assignment') {
+            setActiveTool('assignment')
+          } else if (hit.kind === 'class') {
+            setActiveTool('class')
+          } else if (hit.kind === 'course') {
+            setActiveTool('today')
+          }
+        }}
+      />
 
       {/* Status banner overlay */}
       {status && (

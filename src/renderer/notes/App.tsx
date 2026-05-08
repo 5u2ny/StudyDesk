@@ -308,6 +308,24 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem('studydesk:ui:rightOpen', rightPanelOpen ? '1' : '0') } catch { /* ignore */ } }, [rightPanelOpen])
   useEffect(() => { try { localStorage.setItem('studydesk:ui:rightTab', rightTab) } catch { /* ignore */ } }, [rightTab])
 
+  // T4 (anti-shame): late-night mode. Between 22:00 and 05:00 the
+  // workspace dials down: muted accents, lower contrast, smaller
+  // exclamations in copy. The research finding this addresses:
+  // r/CollegeRant — "Dark mode that doesn't yell at me when I open it
+  // at 4am." Body element gets data-time-of-day so CSS can scope.
+  useEffect(() => {
+    const apply = () => {
+      const h = new Date().getHours()
+      const isLate = h >= 22 || h < 5
+      document.body.dataset.timeOfDay = isLate ? 'late' : 'day'
+    }
+    apply()
+    // Re-check every 5 min so it kicks in for users who leave the app
+    // open through the threshold. No need to be exact.
+    const t = window.setInterval(apply, 5 * 60 * 1000)
+    return () => window.clearInterval(t)
+  }, [])
+
   async function refresh() {
     const [noteData, captureData, courseData, assignmentData, deadlineData, studyData, confusionData, alertData, classData] = await Promise.all([
       ipc.invoke<Note[]>('notes:list'),
@@ -2469,6 +2487,37 @@ function FlashcardsView({ selectedText, studyItems, courseId, onReviewStudyItem,
     }
   }
 
+  // T4 (anti-shame): how many cards are overdue right now? Surfaces in
+  // the "Forgive me" affordance copy so the user knows what they're
+  // resetting before they tap. Counts items with nextReviewAt in the
+  // past, since the SR scheduler is what shames the most.
+  const overdueCount = studyItems.filter(s => (s.nextReviewAt ?? 0) > 0 && s.nextReviewAt! < Date.now()).length
+
+  // T4 (anti-shame): Anki-bankruptcy. Reset every overdue card's
+  // nextReviewAt to now so the queue isn't a wall of shame, but DO NOT
+  // touch reviewCount or difficulty history — that's the data, the
+  // schedule is the story. The research finding this addresses:
+  // "1,800 cards due. I haven't opened it in 11 days. I'd rather fail
+  // the exam than see that due count." n~45 across r/medicalschool +
+  // r/Anki anonymous threads.
+  async function forgiveBacklog() {
+    if (overdueCount === 0) return
+    if (!window.confirm(`Reschedule ${overdueCount} overdue card${overdueCount === 1 ? '' : 's'} for today?\n\nYour review history is preserved — only the due date changes. The pile won't shame you anymore.`)) return
+    let touched = 0
+    try {
+      const overdue = studyItems.filter(s => (s.nextReviewAt ?? 0) > 0 && s.nextReviewAt! < Date.now())
+      for (const item of overdue) {
+        await ipc.invoke('study:update', { id: item.id, patch: { nextReviewAt: Date.now() } })
+        touched++
+      }
+      onStatus(`${touched} card${touched === 1 ? '' : 's'} forgiven. Open Cards when you're ready.`)
+      onSave()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      onStatus(`Reset stopped after ${touched} card${touched === 1 ? '' : 's'}: ${msg}`)
+    }
+  }
+
   const cards = studyItems.slice(0, 6)
   return (
     <section className="phase3-card flashcards-view">
@@ -2479,6 +2528,18 @@ function FlashcardsView({ selectedText, studyItems, courseId, onReviewStudyItem,
           <span>{selectedText ? 'Extract flashcard candidates from the selected document.' : 'Select a document to generate flashcards.'}</span>
         </div>
         <div className="flashcards-header-actions">
+          {/* T4 anti-shame: Forgive backlog. Only renders when there
+              actually IS a backlog so it doesn't sit there as a guilt
+              trigger when things are caught up. */}
+          {drafts.length === 0 && overdueCount > 0 && (
+            <button
+              className="outline-button"
+              onClick={forgiveBacklog}
+              title="Reset due dates on overdue cards back to today. Review history is preserved — only the schedule changes."
+            >
+              Forgive {overdueCount}
+            </button>
+          )}
           {drafts.length === 0 && (
             <button
               className="review-button"

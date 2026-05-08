@@ -3543,3 +3543,38 @@ body {
   pointer-events: none;
   filter: grayscale(0.4);
 }
+
+/* === T4 anti-shame: late-night mode === */
+/* Triggered by App.tsx setting body[data-time-of-day="late"] between
+   22:00 and 05:00. Goal: reduce visual aggression — softer accents,
+   gentler reds, lower exclamation. Quote driving this:
+   "Dark mode that doesn't yell at me when I open it at 4am." */
+body[data-time-of-day="late"] {
+  /* Pull the brand blue toward dusk-violet so the screen doesn't
+     glow as bright. */
+  --sd-blue: #6f8fd4;
+  --sd-blue-soft: rgba(111, 143, 212, 0.18);
+}
+body[data-time-of-day="late"] .review-button {
+  /* Less screaming on the primary action button at night. */
+  background: rgba(111, 143, 212, 0.12);
+  border-color: rgba(111, 143, 212, 0.30);
+  color: rgba(255, 255, 255, 0.82);
+}
+body[data-time-of-day="late"] .review-button:hover {
+  background: rgba(111, 143, 212, 0.18);
+}
+body[data-time-of-day="late"] .phase3-error {
+  /* Soften the emergency red — keep semantic, drop the alarm. */
+  background: rgba(255, 90, 100, 0.06);
+  border-color: rgba(255, 90, 100, 0.22);
+  color: rgba(255, 179, 184, 0.90);
+}
+body[data-time-of-day="late"] .timeline-item-course,
+body[data-time-of-day="late"] .deadline-pill-overdue {
+  filter: brightness(0.85);
+}
+/* Tighten the contrast cap so we never burn anyone's retinas at 3am. */
+body[data-time-of-day="late"] {
+  filter: brightness(0.94);
+}

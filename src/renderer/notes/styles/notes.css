@@ -3834,3 +3834,629 @@ body[data-time-of-day="late"] {
   color: rgba(255, 255, 255, 0.65);
   line-height: 1.45;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   STUDYDESK · DESIGN SYSTEM v2 (top-design + ui-ux-pro-max)
+   ═══════════════════════════════════════════════════════════════════
+   Driven by RESEARCH_FINDINGS.md. Five principles, in priority:
+
+   1. CALM, NOT LOUD
+      The shared spine of student frustration is shame. The UI must
+      not feel like it's yelling. Saturated blues out, warmer greys
+      in. Accents are reserved for genuine signal, not chrome.
+
+   2. EDITORIAL HIERARCHY
+      Awwwards-tier products use one sharp focal point per screen
+      and let everything else breathe. We use type-scale + weight
+      contrast (not color) to set hierarchy.
+
+   3. RESTRAINT OVER ORNAMENT
+      Glass effects + heavy shadows + emoji chrome were the
+      "second-brain aesthetic" students explicitly mocked. Hairlines,
+      single-pixel borders, and one accent color win.
+
+   4. INVITING WHITESPACE
+      Top performers use ugly single-surface tools. We don't have
+      that excuse — we should out-breathe Notion. Dense rows, but
+      generous chrome padding around the whole card.
+
+   5. REWARD MOTION ONLY
+      Motion goes on user-initiated actions only. No idle motion,
+      no shimmer, no breathing UI. 160ms or 220ms, ease-out, done.
+
+   The tokens below override the original :root block. Old code that
+   reads --sd-blue / --sd-text continues to work; new code uses the
+   richer palette. */
+
+:root {
+  /* ── COLOR ────────────────────────────────────────────────────────
+     Backgrounds: layered greys with a hint of warm violet so the dark
+     mode reads as "ink" not "void". Five surface tiers; each step is
+     ~3-4 lightness apart so the eye reads depth without harsh borders. */
+  --sd-ink-0: #0c0c11;     /* deepest — page bg */
+  --sd-ink-1: #11121a;     /* card bg */
+  --sd-ink-2: #181922;     /* card-inside, hover */
+  --sd-ink-3: #21222d;     /* active row */
+  --sd-ink-4: #2c2d39;     /* lifted, popover */
+
+  /* Text: a warm-grey scale rather than pure white so the page reads
+     less clinical. */
+  --sd-fg-1: #f3f0eb;      /* primary — was pure white */
+  --sd-fg-2: #c5c2bc;      /* secondary */
+  --sd-fg-3: #8b8884;      /* tertiary, captions */
+  --sd-fg-4: #5a5854;      /* muted, placeholders */
+
+  /* Accents: ONE blue for the brand. Two semantic. No more. */
+  --sd-accent:        #6b8df7;  /* dusk indigo — calmer than #0a84ff */
+  --sd-accent-soft:   rgba(107, 141, 247, 0.13);
+  --sd-accent-stroke: rgba(107, 141, 247, 0.30);
+  --sd-success:       #5db890;  /* desaturated mint, not a bright green */
+  --sd-warn:          #e8b262;  /* honeyed amber, not alarm orange */
+  --sd-danger:        #d97a85;  /* dusty red, not screaming */
+
+  /* Hairlines: a single weight, single color. */
+  --sd-line:        rgba(255, 255, 255, 0.06);
+  --sd-line-strong: rgba(255, 255, 255, 0.10);
+
+  /* Re-bind legacy tokens to the new palette so existing code keeps
+     working while we migrate. */
+  --sd-blue: var(--sd-accent);
+  --sd-cyan: var(--sd-success);
+  --sd-text: var(--sd-fg-1);
+  --sd-muted: var(--sd-fg-3);
+  --sd-hairline: var(--sd-line);
+  --sd-glass: var(--sd-ink-1);
+  --sd-glass-strong: var(--sd-ink-2);
+
+  /* ── TYPOGRAPHY ──────────────────────────────────────────────────
+     Editorial scale. Tight headings, comfortable body. Inter is the
+     default UI font; New York / Charter for long-form reading mode
+     in notes (only inside .notes-content). */
+  --sd-font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+  --sd-font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter Display", system-ui, sans-serif;
+  --sd-font-serif: "New York", "Iowan Old Style", "Charter", Georgia, serif;
+  --sd-font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Weights. SF Pro / Inter both run cleanest at 400/500/600/700. */
+  --sd-weight-regular: 400;
+  --sd-weight-medium:  500;
+  --sd-weight-semi:    600;
+  --sd-weight-bold:    700;
+
+  /* Type scale — modular, ~1.18 ratio between steps. */
+  --sd-text-2xs: 10px;
+  --sd-text-xs:  11px;
+  --sd-text-sm:  12.5px;
+  --sd-text-md:  14px;
+  --sd-text-lg:  16px;
+  --sd-text-xl:  20px;
+  --sd-text-2xl: 26px;
+  --sd-text-3xl: 34px;
+  --sd-text-4xl: 44px;
+
+  /* Line heights: tight for headings, comfortable for body. */
+  --sd-lh-tight: 1.12;
+  --sd-lh-snug:  1.32;
+  --sd-lh-body:  1.55;
+  --sd-lh-loose: 1.72;  /* reading mode only */
+
+  /* Letter spacing: editorial. Small text gets tighter; display
+     gets very tight. */
+  --sd-track-display: -0.022em;
+  --sd-track-heading: -0.011em;
+  --sd-track-body:    -0.003em;
+  --sd-track-eyebrow: 0.10em;
+
+  /* ── SPACING ─────────────────────────────────────────────────────
+     8px base, with sub-steps for typography fine-tuning. */
+  --sd-space-1:  4px;
+  --sd-space-2:  8px;
+  --sd-space-3:  12px;
+  --sd-space-4:  16px;
+  --sd-space-5:  20px;
+  --sd-space-6:  24px;
+  --sd-space-7:  32px;
+  --sd-space-8:  40px;
+  --sd-space-9:  56px;
+  --sd-space-10: 72px;
+
+  /* ── RADII ───────────────────────────────────────────────────────
+     One radius for chips, one for cards, one for hero surfaces. */
+  --sd-radius-chip: 6px;
+  --sd-radius-card: 10px;
+  --sd-radius-hero: 16px;
+
+  /* ── ELEVATION ───────────────────────────────────────────────────
+     Three tiers. Most surfaces should sit at 0 — the depth comes
+     from background, not shadow. */
+  --sd-shadow-1: 0 1px 0 rgba(0,0,0,0.30);
+  --sd-shadow-2: 0 8px 24px rgba(0,0,0,0.32), 0 1px 2px rgba(0,0,0,0.40);
+  --sd-shadow-3: 0 24px 64px rgba(0,0,0,0.50), 0 4px 12px rgba(0,0,0,0.35);
+
+  /* ── MOTION ──────────────────────────────────────────────────────
+     Two durations. Short for state changes, medium for layout. No long
+     transitions — they read as sluggish. */
+  --sd-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --sd-dur-fast: 140ms;
+  --sd-dur-med:  220ms;
+  --sd-trans-fast: var(--sd-dur-fast) var(--sd-ease-out);
+  --sd-trans-med:  var(--sd-dur-med) var(--sd-ease-out);
+}
+
+/* ── BASE ──────────────────────────────────────────────────────────
+   Set body bg to the new ink-0, set default font + tracking. */
+body {
+  background: var(--sd-ink-0);
+  color: var(--sd-fg-1);
+  font-family: var(--sd-font-ui);
+  font-size: var(--sd-text-sm);
+  font-weight: var(--sd-weight-regular);
+  letter-spacing: var(--sd-track-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Long-form reading mode for the editor body.  This is the one place
+   where serif > sans, because the user is READING not navigating. */
+.ProseMirror {
+  font-family: var(--sd-font-serif);
+  font-size: 15.5px;
+  line-height: var(--sd-lh-loose);
+  letter-spacing: 0;
+  color: rgba(243, 240, 235, 0.94);
+}
+.ProseMirror h1 { font-family: var(--sd-font-display); font-size: var(--sd-text-3xl); font-weight: var(--sd-weight-bold); line-height: var(--sd-lh-tight); letter-spacing: var(--sd-track-display); margin: var(--sd-space-7) 0 var(--sd-space-4); color: var(--sd-fg-1); }
+.ProseMirror h2 { font-family: var(--sd-font-display); font-size: var(--sd-text-2xl); font-weight: var(--sd-weight-semi); line-height: var(--sd-lh-snug); letter-spacing: var(--sd-track-heading); margin: var(--sd-space-6) 0 var(--sd-space-3); color: var(--sd-fg-1); }
+.ProseMirror h3 { font-family: var(--sd-font-display); font-size: var(--sd-text-xl); font-weight: var(--sd-weight-semi); line-height: var(--sd-lh-snug); margin: var(--sd-space-5) 0 var(--sd-space-2); color: var(--sd-fg-1); }
+.ProseMirror p { margin: 0 0 var(--sd-space-3); }
+
+/* ── CHROME · workspace shell, sidebar, panels ────────────────────
+   Replace the previous heavier glass with quieter ink surfaces. */
+
+/* Card-style panels in the workspace shell (LeftSidebar, MainPanel,
+   RightPanel are all PanelCards). */
+.flex.h-full.bg-\[\#0a0a10\] > div,
+.flex.h-full > div[class*="rounded-xl"] {
+  background: var(--sd-ink-1);
+  border-color: var(--sd-line);
+}
+
+/* The icon rail on the left edge — flatten further; less metallic. */
+.flex.h-full > .w-12,
+.flex.h-full > div[class*="w-14"] {
+  background: var(--sd-ink-0);
+  border-right: 1px solid var(--sd-line);
+}
+
+/* ── EYEBROW labels (small uppercase tracking labels) ──
+   These are everywhere in the workspace. Standardize to a single
+   look so the eye doesn't have to re-parse them per surface. */
+.phase3-eyebrow,
+.timeline-eyebrow,
+.notes-eyebrow {
+  font-family: var(--sd-font-ui);
+  font-size: var(--sd-text-2xs);
+  font-weight: var(--sd-weight-bold);
+  letter-spacing: var(--sd-track-eyebrow);
+  text-transform: uppercase;
+  color: var(--sd-fg-3);
+  margin: 0 0 var(--sd-space-2);
+}
+
+/* ── HEADERS that sit on top of cards ──
+   Display font, tight tracking, generous line height. */
+.phase3-card > .phase3-header h1,
+.timeline-view-header h1,
+.notes-empty-hero h2 {
+  font-family: var(--sd-font-display);
+  font-size: var(--sd-text-2xl);
+  font-weight: var(--sd-weight-bold);
+  line-height: var(--sd-lh-tight);
+  letter-spacing: var(--sd-track-display);
+  color: var(--sd-fg-1);
+  margin: 0 0 var(--sd-space-2);
+}
+
+/* Subhead below each header — descriptive, never demanding. */
+.phase3-header > div > span,
+.timeline-view-header > div > span,
+.notes-empty-hero p {
+  font-size: var(--sd-text-sm);
+  color: var(--sd-fg-3);
+  line-height: var(--sd-lh-snug);
+  letter-spacing: var(--sd-track-body);
+}
+
+/* ── BUTTONS · the primary one and the outline one ──
+   Single accent. No gradient. Hover lifts the bg by one ink step,
+   doesn't change color. */
+.review-button {
+  background: var(--sd-accent);
+  border: 1px solid var(--sd-accent);
+  color: white;
+  font-weight: var(--sd-weight-semi);
+  font-size: var(--sd-text-sm);
+  border-radius: var(--sd-radius-chip);
+  padding: 7px 14px;
+  letter-spacing: var(--sd-track-body);
+  box-shadow: var(--sd-shadow-1);
+  transition: background var(--sd-trans-fast), transform var(--sd-trans-fast);
+}
+.review-button:hover {
+  background: #7a9bff;
+  transform: translateY(-0.5px);
+}
+.review-button:active {
+  transform: translateY(0);
+}
+
+.outline-button {
+  background: transparent;
+  border: 1px solid var(--sd-line-strong);
+  color: var(--sd-fg-2);
+  font-weight: var(--sd-weight-medium);
+  font-size: var(--sd-text-sm);
+  border-radius: var(--sd-radius-chip);
+  padding: 6px 12px;
+  letter-spacing: var(--sd-track-body);
+  transition: background var(--sd-trans-fast), border-color var(--sd-trans-fast), color var(--sd-trans-fast);
+}
+.outline-button:hover {
+  background: var(--sd-ink-2);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: var(--sd-fg-1);
+}
+
+/* ── EDITOR TOOLBAR — quieter ──
+   The toolbar should disappear when the user isn't writing. Pull
+   border to a hairline, drop background tint. */
+.studydesk-document-card .notes-toolbar {
+  height: 38px;
+  margin: var(--sd-space-2) var(--sd-space-4) 0;
+  padding: 0 var(--sd-space-2);
+  border: 1px solid var(--sd-line);
+  border-radius: var(--sd-radius-chip);
+  background: transparent;
+  gap: 2px;
+}
+.studydesk-document-card .notes-tool-btn {
+  min-width: 28px;
+  height: 26px;
+  padding: 0 var(--sd-space-1);
+  border-radius: var(--sd-radius-chip);
+  color: var(--sd-fg-3);
+  background: transparent;
+  border: 0;
+  transition: background var(--sd-trans-fast), color var(--sd-trans-fast);
+}
+.studydesk-document-card .notes-tool-btn:hover {
+  background: var(--sd-ink-2);
+  color: var(--sd-fg-1);
+}
+.studydesk-document-card .notes-tool-btn.active {
+  background: var(--sd-accent-soft);
+  color: var(--sd-accent);
+}
+
+/* ── DOCUMENT HEADER · breadcrumb + save state ──
+   Reduce visual weight; this is service info, not the main event. */
+.document-card-header {
+  padding: var(--sd-space-3) var(--sd-space-4);
+  border-bottom: 1px solid var(--sd-line);
+  background: transparent;
+}
+.document-card-header span {
+  font-size: var(--sd-text-xs);
+  color: var(--sd-fg-3);
+  letter-spacing: var(--sd-track-body);
+}
+.document-context-row {
+  padding: var(--sd-space-2) var(--sd-space-4);
+  font-size: var(--sd-text-xs);
+  color: var(--sd-fg-3);
+  gap: var(--sd-space-2);
+}
+
+/* ── COURSE CHIP on tab strip ──
+   Was glowing accent. Now neutral pill, accent only when selected. */
+.course-chip,
+.course-chip-mini {
+  font-size: var(--sd-text-2xs);
+  font-weight: var(--sd-weight-bold);
+  letter-spacing: var(--sd-track-eyebrow);
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: var(--sd-radius-chip);
+  background: var(--sd-ink-2);
+  color: var(--sd-fg-3);
+}
+
+/* ── STATUS TOAST · was loud blue, now whispers ── */
+.absolute.top-3.left-1\/2.-translate-x-1\/2 {
+  background: var(--sd-ink-3) !important;
+  border-color: var(--sd-line-strong) !important;
+  color: var(--sd-fg-2) !important;
+  font-size: var(--sd-text-sm) !important;
+  font-weight: var(--sd-weight-medium) !important;
+  padding: 8px 14px !important;
+  border-radius: var(--sd-radius-chip) !important;
+  box-shadow: var(--sd-shadow-2) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   STUDYDESK DESIGN v2 · LAYER 2 — surfaces + components
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── SIDEBAR section header rows ──
+   The "SYLLABUS IMPORTS · 3" rows. Quieter, smaller, more space below. */
+.sidebar-section-header,
+[class*="ShellSidebarSection"] header,
+[class*="SidebarSection"] header {
+  font-family: var(--sd-font-ui);
+  font-size: var(--sd-text-2xs);
+  font-weight: var(--sd-weight-bold);
+  letter-spacing: var(--sd-track-eyebrow);
+  text-transform: uppercase;
+  color: var(--sd-fg-3);
+  padding: var(--sd-space-3) var(--sd-space-3) var(--sd-space-1);
+}
+
+/* Sidebar rows — note + capture + assignment list items.
+   Hover should feel like paper warming, not a button. */
+button[class*="sidebar-row"],
+.sidebar-row,
+.SidebarRow {
+  border-radius: var(--sd-radius-chip);
+  padding: var(--sd-space-2) var(--sd-space-3);
+  transition: background var(--sd-trans-fast);
+}
+button[class*="sidebar-row"]:hover,
+.sidebar-row:hover {
+  background: var(--sd-ink-2);
+}
+button[class*="sidebar-row"][class*="active"],
+.sidebar-row.active,
+.sidebar-row[aria-selected="true"] {
+  background: var(--sd-ink-3);
+}
+
+/* ── COMMAND PALETTE (T1) — refined to match the new system ── */
+.cmdk-shell {
+  background: var(--sd-ink-1);
+  border: 1px solid var(--sd-line-strong);
+  border-radius: var(--sd-radius-hero);
+  box-shadow: var(--sd-shadow-3);
+}
+.cmdk-input-row {
+  padding: var(--sd-space-3) var(--sd-space-5);
+  border-bottom: 1px solid var(--sd-line);
+}
+.cmdk-input {
+  font-family: var(--sd-font-display);
+  font-size: 17px;
+  letter-spacing: var(--sd-track-heading);
+  font-weight: var(--sd-weight-regular);
+  color: var(--sd-fg-1);
+}
+.cmdk-input::placeholder { color: var(--sd-fg-4); }
+.cmdk-row {
+  padding: var(--sd-space-2) var(--sd-space-3);
+  border-radius: var(--sd-radius-chip);
+}
+.cmdk-row.is-active {
+  background: var(--sd-accent-soft);
+  box-shadow: inset 2px 0 0 var(--sd-accent);
+}
+.cmdk-kind {
+  font-size: 9.5px;
+  font-weight: var(--sd-weight-bold);
+  letter-spacing: var(--sd-track-eyebrow);
+  color: var(--sd-fg-3);
+  min-width: 60px;
+}
+.cmdk-title-text {
+  font-family: var(--sd-font-display);
+  font-size: var(--sd-text-md);
+  font-weight: var(--sd-weight-medium);
+  letter-spacing: var(--sd-track-body);
+  color: var(--sd-fg-1);
+}
+.cmdk-row-snippet {
+  font-family: var(--sd-font-serif);
+  font-size: var(--sd-text-xs);
+  color: var(--sd-fg-3);
+  font-style: italic;
+}
+.cmdk-course {
+  background: transparent;
+  border: 1px solid var(--sd-line-strong);
+  color: var(--sd-fg-3);
+  font-size: 9.5px;
+  font-weight: var(--sd-weight-bold);
+  letter-spacing: var(--sd-track-eyebrow);
+}
+.cmdk-footer {
+  background: var(--sd-ink-0);
+  font-size: var(--sd-text-2xs);
+  color: var(--sd-fg-4);
+  padding: var(--sd-space-2) var(--sd-space-5);
+}
+.cmdk-footer kbd {
+  background: var(--sd-ink-2);
+  border-color: var(--sd-line);
+  color: var(--sd-fg-2);
+  font-family: var(--sd-font-mono);
+}
+
+/* ── MODAL shell shared by Quiz-me-back + Panic mode ── */
+.quiz-back-shell {
+  background: var(--sd-ink-1);
+  border: 1px solid var(--sd-line-strong);
+  border-radius: var(--sd-radius-hero);
+  box-shadow: var(--sd-shadow-3);
+}
+.quiz-back-header {
+  padding: var(--sd-space-5) var(--sd-space-6);
+  border-bottom: 1px solid var(--sd-line);
+}
+.quiz-back-header h1 {
+  font-family: var(--sd-font-display);
+  font-size: var(--sd-text-xl);
+  font-weight: var(--sd-weight-bold);
+  letter-spacing: var(--sd-track-heading);
+  color: var(--sd-fg-1);
+  line-height: var(--sd-lh-tight);
+  margin: 0;
+}
+.quiz-back-header > div > span {
+  font-size: var(--sd-text-sm);
+  color: var(--sd-fg-3);
+  line-height: var(--sd-lh-snug);
+}
+.quiz-back-list {
+  padding: var(--sd-space-3);
+  gap: var(--sd-space-2);
+}
+.quiz-back-row {
+  background: var(--sd-ink-0);
+  border: 1px solid var(--sd-line);
+  border-radius: var(--sd-radius-card);
+  padding: var(--sd-space-3);
+  gap: var(--sd-space-2);
+}
+.quiz-back-row.is-skipped {
+  opacity: 0.40;
+}
+.quiz-back-row.is-dup {
+  border-color: rgba(232, 178, 98, 0.30); /* warn-stroke */
+}
+.quiz-back-row-tag {
+  color: var(--sd-fg-3);
+  font-size: var(--sd-text-2xs);
+  letter-spacing: var(--sd-track-eyebrow);
+}
+.quiz-back-dup {
+  background: rgba(232, 178, 98, 0.13);
+  color: var(--sd-warn);
+}
+.quiz-edit-input {
+  background: var(--sd-ink-1);
+  border: 1px solid var(--sd-line);
+  border-radius: var(--sd-radius-chip);
+  color: var(--sd-fg-1);
+  font-family: var(--sd-font-ui);
+  font-size: var(--sd-text-sm);
+  padding: 8px 10px;
+  letter-spacing: var(--sd-track-body);
+  transition: border-color var(--sd-trans-fast), background var(--sd-trans-fast);
+}
+.quiz-edit-input:focus {
+  outline: none;
+  border-color: var(--sd-accent-stroke);
+  background: var(--sd-ink-2);
+}
+.quiz-back-footer {
+  padding: var(--sd-space-3) var(--sd-space-5);
+  background: var(--sd-ink-0);
+  border-top: 1px solid var(--sd-line);
+  gap: var(--sd-space-3);
+}
+
+/* Panic-mode-specific overrides — front/back typography is the
+   focal moment. Use display font, larger size. */
+.panic-front {
+  font-family: var(--sd-font-display);
+  font-size: var(--sd-text-lg);
+  font-weight: var(--sd-weight-semi);
+  letter-spacing: var(--sd-track-heading);
+  color: var(--sd-fg-1);
+  line-height: var(--sd-lh-snug);
+}
+.panic-back {
+  font-family: var(--sd-font-serif);
+  font-size: var(--sd-text-md);
+  color: var(--sd-fg-2);
+  line-height: var(--sd-lh-body);
+}
+.panic-retrievability {
+  font-family: var(--sd-font-mono);
+  font-size: var(--sd-text-xs);
+  font-weight: var(--sd-weight-bold);
+  letter-spacing: var(--sd-track-body);
+}
+
+/* ── ERROR + STATUS banners ──
+   Drop opaque-red alarm in favor of a single dusty red hairline. */
+.phase3-error {
+  background: rgba(217, 122, 133, 0.08);
+  border: 1px solid rgba(217, 122, 133, 0.25);
+  color: rgba(217, 122, 133, 0.95);
+  border-radius: var(--sd-radius-chip);
+  font-size: var(--sd-text-sm);
+}
+.phase3-error strong { color: var(--sd-danger); }
+.phase3-status {
+  background: var(--sd-accent-soft);
+  border: 1px solid var(--sd-accent-stroke);
+  color: var(--sd-accent);
+  border-radius: var(--sd-radius-chip);
+  font-size: var(--sd-text-sm);
+}
+
+/* ── EMPTY STATE hero ── */
+.notes-empty-hero h2 {
+  font-family: var(--sd-font-display);
+  font-size: var(--sd-text-2xl);
+  font-weight: var(--sd-weight-bold);
+  letter-spacing: var(--sd-track-display);
+  color: var(--sd-fg-1);
+}
+.notes-empty-hero p {
+  font-family: var(--sd-font-serif);
+  font-size: var(--sd-text-md);
+  color: var(--sd-fg-3);
+  line-height: var(--sd-lh-body);
+}
+.notes-empty-hero kbd {
+  background: var(--sd-ink-2);
+  border-color: var(--sd-line-strong);
+  color: var(--sd-fg-2);
+  font-family: var(--sd-font-mono);
+  font-size: 11px;
+}
+
+/* ── DEADLINE row pills (right rail) ──
+   Calmer overdue red; stronger hierarchy. */
+.flex.items-center.gap-2.mb-0\.5 + div span[class*="bg-red-500"] {
+  background: rgba(217, 122, 133, 0.13) !important;
+  color: var(--sd-danger) !important;
+  border: 1px solid rgba(217, 122, 133, 0.20) !important;
+}
+
+/* ── SCROLLBARS ── */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ── FOCUS RING ──
+   One ring across the whole app. Never the browser-default outline. */
+*:focus-visible {
+  outline: 2px solid var(--sd-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.cmdk-input:focus-visible {
+  outline: none; /* the wrapper handles it */
+}

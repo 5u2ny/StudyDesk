@@ -324,14 +324,11 @@ export default function App() {
   // fail cards in the current course scope, ranked by a local
   // retrievability heuristic. State at App level so the trigger can
   // live anywhere (cmdk action / course header / FlashcardsView).
+  // Panic-mode modal owns its state at App level. Studio panel
+  // receives setPanicOpen directly via prop now (review C3) — the
+  // previous window-event bridge was an unnecessary code smell since
+  // the state lives one component above.
   const [panicOpen, setPanicOpen] = useState(false)
-  // Studio panel can dispatch 'studydesk:panic-open' to trigger panic
-  // mode. Listening at App level keeps the modal state with its owner.
-  useEffect(() => {
-    const onPanic = () => setPanicOpen(true)
-    window.addEventListener('studydesk:panic-open', onPanic)
-    return () => window.removeEventListener('studydesk:panic-open', onPanic)
-  }, [])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -1272,12 +1269,16 @@ export default function App() {
             confusions={unresolvedConfusions}
             lintIssues={lintIssues}
             courseId={currentCourse?.id}
-            // Quiz-me-back state lives in DocumentWorkspace (it depends on
-            // the workspace's `selected` note). Bridge with a DOM event
-            // so the Studio button can trigger it without lifting state.
+            // Quiz-me-back state lives in DocumentWorkspace (it depends
+            // on the workspace's `selected` note + extractCardCandidates
+            // result). Bridge with a DOM event so the Studio button can
+            // trigger it without lifting state across the tree.
             // DocumentWorkspace listens for 'studydesk:quiz-me-back-open'.
+            // (Review C3: panic-mode bridge dropped; setPanicOpen is
+            // now a direct prop because that state lives at App level.)
             onOpenQuizMeBack={() => window.dispatchEvent(new CustomEvent('studydesk:quiz-me-back-open'))}
-            onOpenPanic={() => window.dispatchEvent(new CustomEvent('studydesk:panic-open'))}
+            onOpenPanic={() => setPanicOpen(true)}
+            hasActiveNote={!!selected}
             onOpenNote={(n) => setSelected(n)}
             onResolveAlert={(id) => resolveAlert(id)}
             onCompleteDeadline={(id) => completeDeadline(id)}

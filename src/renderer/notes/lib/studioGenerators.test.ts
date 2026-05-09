@@ -110,15 +110,63 @@ describe('buildStudyGuide', () => {
   })
 
   it('does NOT use AI / heuristic synthesis — output text is verbatim from notes', () => {
-    // Regression guard: the brand promise is "no invention". This test
-    // verifies that for a heading "Stakeholders" with body sentence
-    // "A stakeholder is anyone affected", we return EXACTLY those words
-    // from the note — never a paraphrased version.
     const original = 'A stakeholder is anyone affected by the project.'
     const n = note('n1', 't', doc(h(2, 'Stakeholders'), p(original + ' More content here.')))
     const summary = buildStudyGuide([n])[0].firstSentence
     expect(summary).toBe(original)
     expect(summary).not.toContain('synth')
     expect(summary).not.toContain('summary')
+  })
+
+  // Review I2: nested headings inside containers.
+  it('finds H2 inside a bulletList item', () => {
+    const tree = doc({
+      type: 'bulletList',
+      content: [
+        { type: 'listItem', content: [
+          h(2, 'Risk inside list'),
+          p('Ownership is unclear.'),
+        ]},
+      ],
+    })
+    const n = note('n1', 't', tree)
+    const result = buildStudyGuide([n])
+    expect(result.map(r => r.heading)).toContain('Risk inside list')
+    expect(result[0].firstSentence).toBe('Ownership is unclear.')
+  })
+
+  it('finds H2 inside a blockquote', () => {
+    const tree = doc({
+      type: 'blockquote',
+      content: [h(2, 'Quoted heading'), p('A quoted note.')],
+    })
+    const n = note('n1', 't', tree)
+    const result = buildStudyGuide([n])
+    expect(result[0].heading).toBe('Quoted heading')
+    expect(result[0].firstSentence).toBe('A quoted note.')
+  })
+
+  // Review I3: abbreviation + decimal handling in firstSentence.
+  it('does not split sentences at abbreviations like "Dr."', () => {
+    const n = note('n1', 't', doc(h(2, 'X'), p('Dr. Smith said hi to the team. Then she left.')))
+    expect(buildStudyGuide([n])[0].firstSentence).toBe('Dr. Smith said hi to the team.')
+  })
+
+  it('does not split sentences at decimals like "3.14"', () => {
+    const n = note('n1', 't', doc(h(2, 'X'), p('Pi is 3.14. That is approximate.')))
+    expect(buildStudyGuide([n])[0].firstSentence).toBe('Pi is 3.14.')
+  })
+
+  it('handles common abbreviations: e.g., i.e., etc.', () => {
+    const n = note('n1', 't', doc(h(2, 'X'), p('Use lowercase tags, e.g. priority. Also nouns.')))
+    // The matcher requires whitespace+uppercase after the boundary;
+    // "e.g." is followed by " priority" (lowercase) so we skip past
+    // it. Sentence boundary lands at "...priority."
+    expect(buildStudyGuide([n])[0].firstSentence).toBe('Use lowercase tags, e.g. priority.')
+  })
+
+  it('returns the whole sentence if no abbreviation traps appear', () => {
+    const n = note('n1', 't', doc(h(2, 'X'), p('Stakeholder analysis is the practice of identifying interested parties.')))
+    expect(buildStudyGuide([n])[0].firstSentence).toBe('Stakeholder analysis is the practice of identifying interested parties.')
   })
 })

@@ -82,9 +82,12 @@ function extractH1s(content: string): string[] {
   let doc: any
   try { doc = JSON.parse(content) } catch { return [] }
   const out: string[] = []
-  for (const block of asArray(doc?.content)) {
-    if (block?.type === 'heading' && block.attrs?.level === 1) {
-      const text = textOf(block).trim()
+  // Recursive walk so headings inside bulletList / blockquote / details
+  // are still discovered (review I2 — the previous top-level loop
+  // missed nested cases). Document order preserved.
+  for (const node of flattenInDocOrder(doc)) {
+    if (node?.type === 'heading' && node.attrs?.level === 1) {
+      const text = textOf(node).trim()
       if (text) out.push(text)
     }
   }
@@ -97,31 +100,53 @@ function extractHeadingsWithFollowingSentence(
   if (!content) return []
   let doc: any
   try { doc = JSON.parse(content) } catch { return [] }
-  const blocks = asArray(doc?.content)
+  // Flatten the document into a stream of leaf-y blocks
+  // (heading + paragraph) in document order. Then pair each H2/H3
+  // with the next paragraph that follows it, stopping at the next
+  // heading. This is the recursive version of the previous flat scan
+  // (review I2): nested headings inside lists/blockquotes are now
+  // discovered, and we still skip irrelevant block types like
+  // images / codeBlocks when looking for the summary paragraph.
+  const stream: any[] = []
+  for (const node of flattenInDocOrder(doc)) {
+    if (node?.type === 'heading' || node?.type === 'paragraph') {
+      stream.push(node)
+    }
+  }
   const out: Array<{ heading: string; level: 2 | 3; firstSentence: string }> = []
-  for (let i = 0; i < blocks.length; i++) {
-    const b = blocks[i]
-    if (b?.type !== 'heading') continue
+  for (let i = 0; i < stream.length; i++) {
+    const b = stream[i]
+    if (b.type !== 'heading') continue
     const lvl = b.attrs?.level
     if (lvl !== 2 && lvl !== 3) continue
     const heading = textOf(b).trim()
     if (!heading) continue
-    // Find the first paragraph that follows; pull its first sentence.
     let firstSentence = ''
-    for (let j = i + 1; j < blocks.length && j < i + 6; j++) {
-      const bb = blocks[j]
-      if (bb?.type === 'heading') break // hit the next heading; stop
-      if (bb?.type === 'paragraph') {
+    // Walk forward up to 5 stream nodes for the first paragraph,
+    // stopping at the next heading.
+    for (let j = i + 1; j < stream.length && j < i + 6; j++) {
+      const bb = stream[j]
+      if (bb.type === 'heading') break
+      if (bb.type === 'paragraph') {
         const t = textOf(bb).trim()
-        if (t) {
-          firstSentence = firstSentenceOf(t)
-          break
-        }
+        if (t) { firstSentence = firstSentenceOf(t); break }
       }
     }
     out.push({ heading, level: lvl as 2 | 3, firstSentence })
   }
   return out
+}
+
+/** Pre-order traversal of a TipTap document, yielding every node. The
+ *  key win over the previous top-level loop: we descend into containers
+ *  like bulletList / orderedList / blockquote / details / listItem so
+ *  headings nested inside them are visible to the generators. */
+function* flattenInDocOrder(node: any): Generator<any> {
+  if (!node) return
+  if (typeof node === 'object' && node.type) yield node
+  for (const child of asArray(node?.content)) {
+    yield* flattenInDocOrder(child)
+  }
 }
 
 function asArray(x: any): any[] { return Array.isArray(x) ? x : [] }
@@ -132,11 +157,42 @@ function textOf(node: any): string {
   return asArray(node.content).map(textOf).join('')
 }
 
-/** Cheap first-sentence: take up to the first . ! ? followed by space
- *  or end-of-string. If the paragraph is one long sentence, return it
- *  truncated to ~180 chars. */
+/** First-sentence extractor that doesn't break on common abbreviations
+ *  or decimals (review I3). The earlier regex matched at the FIRST .,
+ *  so "Dr. Smith said hi." returned "Dr." Now we scan and skip period
+ *  matches that are preceded by an abbreviation or a digit (decimals
+ *  like "3.14") and require a real sentence boundary: . ! or ? at
+ *  end-of-string OR followed by whitespace + an uppercase letter.
+ *  Paragraph-without-terminator falls back to a length cap. */
+const ABBREVIATIONS = new Set([
+  'dr', 'mr', 'mrs', 'ms', 'prof', 'sr', 'jr', 'st', 'no',
+  'inc', 'ltd', 'co', 'corp', 'vs', 'etc', 'ie', 'eg', 'al',
+])
 function firstSentenceOf(s: string): string {
-  const m = s.match(/^[^.!?]*[.!?](?=\s|$)/)
-  if (m) return m[0].trim()
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]
+    if (ch !== '.' && ch !== '!' && ch !== '?') continue
+    // Decimal? skip.
+    if (ch === '.' && /\d/.test(s[i - 1] ?? '') && /\d/.test(s[i + 1] ?? '')) continue
+    // Abbreviation? scan back to the previous space, lowercase, check.
+    if (ch === '.') {
+      let k = i - 1
+      while (k >= 0 && /[A-Za-z]/.test(s[k])) k--
+      const word = s.slice(k + 1, i).toLowerCase()
+      if (word && ABBREVIATIONS.has(word)) continue
+    }
+    // Sentence boundary requires end-of-string OR whitespace next, then
+    // an uppercase / opener / nothing. Looser than perfect but good
+    // enough.
+    const next = s[i + 1]
+    if (next === undefined || next === '\n') return s.slice(0, i + 1).trim()
+    if (/\s/.test(next)) {
+      const after = s.slice(i + 1).trimStart()
+      if (after === '' || /^[A-Z"'(\[]/.test(after) || /^["'(\[]/.test(after)) {
+        return s.slice(0, i + 1).trim()
+      }
+    }
+  }
+  // No terminator found — truncate.
   return s.length > 180 ? s.slice(0, 180).trimEnd() + '…' : s
 }

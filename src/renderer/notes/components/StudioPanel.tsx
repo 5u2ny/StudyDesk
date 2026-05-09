@@ -23,6 +23,7 @@ import type { Note, AcademicDeadline, AttentionAlert, StudyItem, ConfusionItem }
 import { buildBrief, buildStudyGuide, type BriefSection, type StudyGuideEntry } from '../lib/studioGenerators'
 import type { LintIssue } from '../lib/noteHealth'
 import { summarizeIssues } from '../lib/noteHealth'
+import { isActiveAttentionAlert } from '@shared/lib/alerts'
 
 export interface StudioPanelProps {
   notes: Note[]
@@ -33,6 +34,10 @@ export interface StudioPanelProps {
   lintIssues: LintIssue[]
   /** Course filter — undefined means "all courses". */
   courseId?: string
+  /** True if the workspace currently has a note open. Drives whether
+   *  the "Quiz me back" card's CTA is enabled — clicking it without
+   *  an active note used to be a silent no-op (review C2). */
+  hasActiveNote: boolean
 
   /** Open the Quiz me back modal for the active note. */
   onOpenQuizMeBack: () => void
@@ -49,19 +54,30 @@ export interface StudioPanelProps {
 interface CardProps {
   id: string
   icon: React.ComponentType<any>
+  /** Title — primary identifier for the card. */
   title: string
+  /** One-line description shown under the title. */
   description: string
-  defaultOpen?: boolean
+  /** Open/closed state. Controlled — parent owns the toggle so it can
+   *  decide whether to run heavy generators based on which cards are
+   *  open. (Review I4.) */
+  open: boolean
+  onToggle: () => void
+  /** Optional numeric chip on the right edge. Shown only when > 0. */
   badge?: number
+  /** Optional accent treatment — used when the card needs urgency
+   *  (e.g. > 20 cards due in panic mode). */
   accent?: boolean
-  children: React.ReactNode
+  /** Body — only rendered when open, so callers can compute lazily.
+   *  Pass a function to defer expensive work; pass JSX directly when
+   *  there's nothing heavy to compute. */
+  children: React.ReactNode | (() => React.ReactNode)
 }
 
-function StudioCard({ id, icon: Icon, title, description, defaultOpen, badge, accent, children }: CardProps) {
-  const [open, setOpen] = useState(!!defaultOpen)
+function StudioCard({ id, icon: Icon, title, description, open, onToggle, badge, accent, children }: CardProps) {
   return (
     <article className={`studio-card${accent ? ' is-accent' : ''}${open ? ' is-open' : ''}`} data-card={id}>
-      <button className="studio-card-head" onClick={() => setOpen(o => !o)} aria-expanded={open}>
+      <button className="studio-card-head" onClick={onToggle} aria-expanded={open}>
         <span className="studio-card-icon"><Icon size={15} /></span>
         <span className="studio-card-titles">
           <span className="studio-card-title">{title}</span>
@@ -70,7 +86,7 @@ function StudioCard({ id, icon: Icon, title, description, defaultOpen, badge, ac
         {badge != null && badge > 0 && <span className="studio-card-badge">{badge}</span>}
         <span className="studio-card-chev">{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span>
       </button>
-      {open && <div className="studio-card-body">{children}</div>}
+      {open && <div className="studio-card-body">{typeof children === 'function' ? children() : children}</div>}
     </article>
   )
 }
@@ -83,6 +99,7 @@ export function StudioPanel({
   confusions,
   lintIssues,
   courseId,
+  hasActiveNote,
   onOpenQuizMeBack,
   onOpenPanic,
   onOpenNote,
@@ -96,23 +113,58 @@ export function StudioPanel({
     () => courseId ? notes.filter(n => n.courseId === courseId) : notes,
     [notes, courseId],
   )
-  const brief = useMemo(() => buildBrief(scopedNotes).slice(0, 12), [scopedNotes])
-  const guide = useMemo(() => buildStudyGuide(scopedNotes).slice(0, 24), [scopedNotes])
 
-  // Inbox: overdue + due-today deadlines, plus active critical alerts.
-  // No fluff, just things that need attention right now.
+  // Open-state lifted out of each <StudioCard> so the heavy generators
+  // (Brief, Study guide) only run when the corresponding card is open.
+  // Review I4: the previous unconditional buildBrief/buildStudyGuide
+  // ran a JSON.parse on every note on every render, even for cards
+  // the user had collapsed.
+  const [openCards, setOpenCards] = useState<Record<string, boolean>>({ brief: true })
+  const toggle = (id: string) => setOpenCards(s => ({ ...s, [id]: !s[id] }))
+  const isOpen = (id: string) => !!openCards[id]
+
+  // Tight count for the badge — uses just the array length, not the
+  // built object stream — so we can show the count cheaply without
+  // running the parse pipeline on collapsed cards.
+  const briefNoteCount = scopedNotes.length
+
+  // Brief / Study guide computed lazily — only when their card is open.
+  const brief = useMemo<BriefSection[]>(
+    () => isOpen('brief') ? buildBrief(scopedNotes).slice(0, 12) : [],
+    [scopedNotes, openCards],
+  )
+  const guide = useMemo<StudyGuideEntry[]>(
+    () => isOpen('study-guide') ? buildStudyGuide(scopedNotes).slice(0, 24) : [],
+    [scopedNotes, openCards],
+  )
+  // Cheap study-guide badge count (lazy via small sample if collapsed).
+  // We don't need the exact count when collapsed; the user just wants
+  // a hint. Skip the heavy walk and use a noteCount-ish estimate.
+  const guideCountHint = isOpen('study-guide') ? guide.length : Math.min(scopedNotes.length * 3, 50)
+
+  // Inbox: overdue + due-this-week deadlines, plus active alerts.
+  // Bounded on both sides (review I1): -30d ≤ delta < +7d so a long
+  // vacation doesn't flood the panel with year-old overdue items.
   const now = Date.now()
+  const DAY = 86_400_000
   const inboxDeadlines = useMemo(() => deadlines
     .filter(d => !d.completed)
     .filter(d => !courseId || d.courseId === courseId)
-    .filter(d => (d.deadlineAt - now) < 86_400_000 * 7)
+    .filter(d => {
+      const delta = d.deadlineAt - now
+      return delta > -30 * DAY && delta < 7 * DAY
+    })
     .sort((a, b) => a.deadlineAt - b.deadlineAt)
     .slice(0, 8), [deadlines, courseId, now])
 
-  // Active alerts = status is 'new' (not snoozed/dismissed/resolved).
+  // Active alerts via canonical predicate (review C1): excludes
+  // dismissed/resolved AND snoozed-while-snoozedUntil>now, but
+  // INCLUDES snoozed alerts whose snooze has elapsed — those should
+  // resurface, which the previous `status === 'new'` filter was
+  // silently hiding.
   const activeAlerts = useMemo(() => alerts
-    .filter(a => a.status === 'new')
-    .slice(0, 5), [alerts])
+    .filter(a => isActiveAttentionAlert(a, now))
+    .slice(0, 5), [alerts, now])
 
   const dueCardsCount = studyItems.filter(s =>
     (!courseId || s.courseId === courseId) &&
@@ -133,10 +185,11 @@ export function StudioPanel({
         {/* ── ACTIVE generation cards ────────────────────────────── */}
         <StudioCard
           id="brief"
+          open={isOpen('brief')} onToggle={() => toggle('brief')}
           icon={FileText}
           title="Brief"
           description={`Outline of ${scopedNotes.length} note${scopedNotes.length === 1 ? '' : 's'}, latest first`}
-          defaultOpen
+          
         >
           {brief.length === 0 ? (
             <EmptyHint message="No notes yet">Add a note to see the brief.</EmptyHint>
@@ -166,10 +219,11 @@ export function StudioPanel({
 
         <StudioCard
           id="study-guide"
+          open={isOpen('study-guide')} onToggle={() => toggle('study-guide')}
           icon={BookOpen}
           title="Study guide"
           description="Every heading + its first sentence — the user's own words"
-          badge={guide.length}
+          badge={guideCountHint}
         >
           {guide.length === 0 ? (
             <EmptyHint message="Nothing to compile yet">Add H2 / H3 headings to your notes — they become the study guide.</EmptyHint>
@@ -191,16 +245,31 @@ export function StudioPanel({
 
         <StudioCard
           id="quiz-me"
+          open={isOpen('quiz-me')} onToggle={() => toggle('quiz-me')}
           icon={Sparkles}
           title="Quiz me back"
-          description="Turn the active note's headings into review questions"
+          description={hasActiveNote
+            ? "Turn the active note's headings into review questions"
+            : 'Open a note in the workspace to enable this'}
         >
-          <p className="card-note">Open the active note, then click to extract candidate questions. You decide which ones become flashcards — no AI invention, just your headings.</p>
-          <button className="review-button" onClick={onOpenQuizMeBack}>Quiz me from this note</button>
+          <p className="card-note">
+            {hasActiveNote
+              ? 'Click to extract candidate questions from the active note. You decide which ones become flashcards — no AI invention, just your headings.'
+              : 'No note is open right now. Pick one from the sidebar (or click a row in Brief above), then come back.'}
+          </p>
+          <button
+            className="review-button"
+            onClick={onOpenQuizMeBack}
+            disabled={!hasActiveNote}
+            title={hasActiveNote ? 'Extract candidate questions from this note' : 'No active note'}
+          >
+            Quiz me from this note
+          </button>
         </StudioCard>
 
         <StudioCard
           id="panic"
+          open={isOpen('panic')} onToggle={() => toggle('panic')}
           icon={AlertCircle}
           title="Panic mode"
           description={dueCardsCount > 0 ? `${dueCardsCount} due card${dueCardsCount === 1 ? '' : 's'} ranked by retrievability` : 'No cards due — you\'re caught up'}
@@ -216,6 +285,7 @@ export function StudioPanel({
         {/* ── INBOX (was a sub-tab; now a card) ─────────────────── */}
         <StudioCard
           id="inbox"
+          open={isOpen('inbox')} onToggle={() => toggle('inbox')}
           icon={InboxIcon}
           title="Inbox"
           description={`${inboxDeadlines.length} deadline${inboxDeadlines.length === 1 ? '' : 's'} this week · ${activeAlerts.length} alert${activeAlerts.length === 1 ? '' : 's'}`}
@@ -266,6 +336,7 @@ export function StudioPanel({
         {/* ── HEALTH (demoted from sub-tab) ─────────────────────── */}
         <StudioCard
           id="health"
+          open={isOpen('health')} onToggle={() => toggle('health')}
           icon={Activity}
           title="Note health"
           description={`${lintIssues.length} issue${lintIssues.length === 1 ? '' : 's'} across your notes`}
@@ -285,6 +356,7 @@ export function StudioPanel({
              user knows we're aware of them, not pretending. */}
         <StudioCard
           id="audio-overview"
+          open={isOpen('audio-overview')} onToggle={() => toggle('audio-overview')}
           icon={Headphones}
           title="Audio overview"
           description="A short audio briefing of this course"
@@ -298,6 +370,7 @@ export function StudioPanel({
 
         <StudioCard
           id="mind-map"
+          open={isOpen('mind-map')} onToggle={() => toggle('mind-map')}
           icon={Network}
           title="Mind map"
           description="Concept connections across your notes"
@@ -312,6 +385,7 @@ export function StudioPanel({
         {unresolvedQuestionCount > 0 && (
           <StudioCard
             id="confusions"
+          open={isOpen('confusions')} onToggle={() => toggle('confusions')}
             icon={Brain}
             title="Open questions"
             description={`${unresolvedQuestionCount} unresolved confusion${unresolvedQuestionCount === 1 ? '' : 's'}`}

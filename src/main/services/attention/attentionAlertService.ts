@@ -1,15 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { focusStore } from '../store';
 import type { AttentionAlert } from '../../../shared/schema/index';
+import { isActiveAttentionAlert as isActive } from '../../../renderer/shared/lib/alerts';
 
 function existingGeneratedIds(): Set<string> {
   return new Set(focusStore.get('attentionAlerts').map(a => `${a.sourceType}:${a.sourceId ?? a.title}`));
-}
-
-function isActive(alert: AttentionAlert, now = Date.now()): boolean {
-  if (alert.status === 'dismissed' || alert.status === 'resolved') return false;
-  if (alert.status === 'snoozed' && (alert.snoozedUntil ?? 0) > now) return false;
-  return true;
 }
 
 function createAlert(input: Omit<AttentionAlert, 'id' | 'status' | 'createdAt' | 'updatedAt'>): AttentionAlert {

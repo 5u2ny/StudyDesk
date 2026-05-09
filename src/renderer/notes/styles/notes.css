@@ -4704,3 +4704,411 @@ input::placeholder, textarea::placeholder {
   font-family: var(--sd-font-serif);
   color: var(--sd-fg-2);
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   STUDYDESK DESIGN v3 · NotebookLM affinity
+   ═══════════════════════════════════════════════════════════════════
+   User asked to make the UI more similar to NotebookLM. Specifically
+   pulling on these visual signals from NotebookLM's dark mode:
+
+   - Tonal Material-3 surfaces (warmer, slightly violet-leaning grays
+     with visible elevation steps), not the pitch-black we had
+   - Large corner radii on cards (12–20px) — almost soft-cushion feel
+   - Pill-rounded chips for source tags + status (full radius)
+   - Generous "Studio cards" — chunky feature-launch tiles with icon
+     + title + description, used on the right-panel sub-tabs
+   - Sans throughout (NotebookLM does not use serif anywhere); the
+     New York body in the editor switches to sans display for
+     consistency
+   - Material blue accent (#4f8ff7 region) as the single hero color
+   - Soft drop shadows on cards (Material tonal elevation), not
+     hairline borders alone
+   - Citations as numbered superscript pills
+
+   Override layer — sits after v2 so it wins specificity. */
+
+:root {
+  /* ── COLOR · NotebookLM-flavored Material 3 dark surfaces ─────── */
+  --sd-ink-0: #0e0f14;     /* page bg — slightly warmer than v2 */
+  --sd-ink-1: #16171d;     /* card bg — visible step from page */
+  --sd-ink-2: #1e1f27;     /* card-inside, hover */
+  --sd-ink-3: #282a34;     /* active row, focused field */
+  --sd-ink-4: #34363f;     /* lifted, popover */
+
+  /* Foreground keeps warm-grey scale but bumps primary contrast */
+  --sd-fg-1: #e8eaf0;
+  --sd-fg-2: #b8bcc6;
+  --sd-fg-3: #80858f;
+  --sd-fg-4: #555861;
+
+  /* Accent · NotebookLM blue. Bright but not saturated; sits well on
+     the dark warm-grey surfaces. */
+  --sd-accent:        #4f8ff7;
+  --sd-accent-soft:   rgba(79, 143, 247, 0.13);
+  --sd-accent-stroke: rgba(79, 143, 247, 0.32);
+
+  /* Material-style radii. Cards are noticeably rounder. */
+  --sd-radius-chip: 999px;     /* full pill — chips, course tags */
+  --sd-radius-card: 14px;       /* cards, panels */
+  --sd-radius-hero: 20px;       /* modals, hero panels, big surfaces */
+
+  /* Tonal elevation — Material's soft-shadow approach. */
+  --sd-shadow-1: 0 1px 2px rgba(0,0,0,0.30), 0 0 0 1px rgba(255,255,255,0.04) inset;
+  --sd-shadow-2: 0 4px 14px rgba(0,0,0,0.32), 0 1px 0 rgba(255,255,255,0.04) inset;
+  --sd-shadow-3: 0 16px 48px rgba(0,0,0,0.50), 0 1px 0 rgba(255,255,255,0.05) inset;
+}
+
+/* ── BASE — sans everywhere; drop the serif body ──
+   NotebookLM has no serif. Override the v2 ProseMirror serif with
+   the display-sans family. */
+.ProseMirror {
+  font-family: var(--sd-font-display) !important;
+  font-size: 15px;
+  line-height: 1.65;
+  letter-spacing: -0.005em;
+  color: var(--sd-fg-1);
+}
+.ProseMirror h1 { font-size: var(--sd-text-3xl); font-weight: 700; letter-spacing: -0.022em; }
+.ProseMirror h2 { font-size: var(--sd-text-2xl); font-weight: 600; letter-spacing: -0.013em; }
+.ProseMirror h3 { font-size: var(--sd-text-xl); font-weight: 600; letter-spacing: -0.010em; }
+.scratch-pane,
+[class*="SCRATCH"] {
+  font-family: var(--sd-font-ui) !important;
+}
+
+/* ── PANELS · Material card treatment ── */
+.flex.h-full.bg-\[\#0a0a10\] > div,
+.flex.h-full > div[class*="rounded-xl"] {
+  background: var(--sd-ink-1);
+  border: 1px solid var(--sd-line);
+  border-radius: var(--sd-radius-hero);
+  box-shadow: var(--sd-shadow-2);
+}
+
+/* The icon rail keeps clean — page bg plus single hairline. */
+.flex.h-full > .w-12,
+.flex.h-full > div[class*="w-14"] {
+  background: var(--sd-ink-0);
+  border-right: 1px solid var(--sd-line);
+}
+
+/* ── BUTTONS · Material 3 pills ──
+   Filled action button is the NotebookLM "Add" / primary CTA — full
+   pill, generous horizontal padding, no transform on hover (M3 doesn't
+   lift, it changes color tone). */
+.review-button {
+  background: var(--sd-accent);
+  color: white;
+  border: 0;
+  border-radius: var(--sd-radius-chip);
+  padding: 9px 18px;
+  font-size: var(--sd-text-sm);
+  font-weight: var(--sd-weight-semi);
+  letter-spacing: -0.005em;
+  box-shadow: 0 1px 3px rgba(79, 143, 247, 0.35);
+  transition: background var(--sd-trans-fast), box-shadow var(--sd-trans-fast);
+}
+.review-button:hover {
+  background: #6aa0f9;
+  box-shadow: 0 2px 8px rgba(79, 143, 247, 0.45);
+  transform: none;
+}
+.review-button:active {
+  background: #3f7ee2;
+  transform: none;
+}
+
+.outline-button {
+  background: var(--sd-ink-2);
+  color: var(--sd-fg-1);
+  border: 1px solid var(--sd-line-strong);
+  border-radius: var(--sd-radius-chip);
+  padding: 8px 16px;
+  font-size: var(--sd-text-sm);
+  font-weight: var(--sd-weight-medium);
+  transition: background var(--sd-trans-fast), border-color var(--sd-trans-fast);
+}
+.outline-button:hover {
+  background: var(--sd-ink-3);
+  border-color: var(--sd-line-strong);
+}
+
+/* ── CHIPS — full pills, NotebookLM tag style ── */
+.course-chip,
+.course-chip-mini,
+.cmdk-course,
+[class*="bg-blue-500\\/10"][class*="rounded"],
+[class*="rounded-full"][class*="px-"] {
+  border-radius: 999px !important;
+  padding: 3px 10px !important;
+  font-size: var(--sd-text-2xs) !important;
+  font-weight: var(--sd-weight-semi) !important;
+  letter-spacing: 0.03em !important;
+  background: var(--sd-ink-2);
+  border: 1px solid var(--sd-line) !important;
+  color: var(--sd-fg-2);
+  text-transform: none;
+}
+
+/* ── TAB STRIP — NotebookLM-style underline-on-active rather than
+   filled pill ── */
+nav button[class*="rounded-md"] {
+  border-radius: var(--sd-radius-chip) !important;
+  padding: 6px 14px !important;
+  font-weight: var(--sd-weight-medium);
+  font-size: var(--sd-text-xs);
+  position: relative;
+}
+nav button[class*="bg-white/[0.08]"] {
+  background: var(--sd-accent-soft) !important;
+  color: var(--sd-accent) !important;
+  box-shadow: none !important;
+}
+
+/* ── EDITOR TOOLBAR · slight tonal lift, more rounded ── */
+.studydesk-document-card .notes-toolbar {
+  background: var(--sd-ink-1);
+  border: 1px solid var(--sd-line);
+  border-radius: 12px;
+  padding: 4px;
+  height: auto;
+  min-height: 40px;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset;
+}
+.studydesk-document-card .notes-tool-btn {
+  border-radius: 8px;
+  min-width: 32px;
+  height: 30px;
+}
+.studydesk-document-card .notes-tool-btn.active {
+  background: var(--sd-accent-soft);
+  color: var(--sd-accent);
+}
+
+/* ── INPUT — Material 3 outlined text field feel ── */
+input[type="text"],
+input[type="search"],
+textarea,
+.syllabus-paste-area,
+.syllabus-inline-edit {
+  background: var(--sd-ink-1);
+  border: 1px solid var(--sd-line-strong);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: var(--sd-text-md);
+}
+input[type="text"]:focus,
+input[type="search"]:focus,
+textarea:focus,
+.syllabus-paste-area:focus,
+.syllabus-inline-edit:focus {
+  border-color: var(--sd-accent);
+  box-shadow: 0 0 0 3px var(--sd-accent-soft);
+  background: var(--sd-ink-1);
+}
+
+/* ── SIDEBAR ROWS — softer, material-card style ── */
+.SidebarRow,
+button[class*="sidebar-row"] {
+  border-radius: 10px !important;
+  padding: 8px 12px !important;
+}
+button[class*="sidebar-row"][class*="active"],
+.sidebar-row.active,
+.sidebar-row[aria-selected="true"] {
+  background: var(--sd-accent-soft) !important;
+  color: var(--sd-accent) !important;
+}
+
+/* ── COMMAND PALETTE — NotebookLM-style drop ── */
+.cmdk-shell {
+  background: var(--sd-ink-1);
+  border: 1px solid var(--sd-line);
+  border-radius: 20px;
+  box-shadow: var(--sd-shadow-3);
+}
+.cmdk-input {
+  font-family: var(--sd-font-display);
+  font-weight: 400;
+}
+.cmdk-row { border-radius: 10px; }
+.cmdk-row.is-active {
+  background: var(--sd-accent-soft);
+  box-shadow: none;
+}
+.cmdk-row.is-active .cmdk-title-text { color: var(--sd-accent); }
+
+/* ── RIGHT-PANEL SUB-TABS — NotebookLM Studio-card affordance ──
+   Inbox / Materials / Study / Health currently render as a tab
+   strip. NotebookLM's right pane (Studio) shows feature *cards*
+   instead. Repaint the existing tab buttons as chunkier cards
+   without changing the JSX. */
+.flex.items-center.gap-1.bg-white\/\[0\.04\] > button[class*="rounded-md"] {
+  border-radius: 12px !important;
+  padding: 8px 12px !important;
+  background: transparent !important;
+  border: 1px solid transparent;
+  font-weight: var(--sd-weight-medium);
+}
+.flex.items-center.gap-1.bg-white\/\[0\.04\] > button[class*="bg-white"][class*="active"],
+.flex.items-center.gap-1.bg-white\/\[0\.04\] > button[aria-selected="true"] {
+  background: var(--sd-accent-soft) !important;
+  color: var(--sd-accent) !important;
+  border-color: var(--sd-accent-stroke) !important;
+}
+
+/* ── DEADLINE CARDS in right rail · pull toward Material card ── */
+button[class*="bg-white/[0.03]"][class*="rounded-lg"] {
+  border-radius: 12px !important;
+  padding: 10px 12px !important;
+  background: var(--sd-ink-1) !important;
+  border-color: var(--sd-line) !important;
+  transition: background var(--sd-trans-fast), border-color var(--sd-trans-fast);
+}
+button[class*="bg-white/[0.03]"][class*="rounded-lg"]:hover {
+  background: var(--sd-ink-2) !important;
+  border-color: var(--sd-line-strong) !important;
+}
+
+/* OVERDUE / TODAY pills — Material style, full-pill, no border. */
+span[class*="bg-red-500\\/22"],
+span[class*="bg-red-500\\/20"] {
+  background: rgba(217, 122, 133, 0.18) !important;
+  color: var(--sd-danger) !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  padding: 2px 9px !important;
+  font-size: var(--sd-text-2xs) !important;
+}
+span[class*="bg-amber-500\\/20"] {
+  background: rgba(232, 178, 98, 0.16) !important;
+  color: var(--sd-warn) !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  padding: 2px 9px !important;
+  font-size: var(--sd-text-2xs) !important;
+}
+
+/* ── ALERT cards on right rail · Material treatment ── */
+.studydesk-alert {
+  background: var(--sd-ink-1);
+  border: 1px solid var(--sd-line);
+  border-radius: 12px;
+  padding: var(--sd-space-3);
+}
+.studydesk-alert button:first-of-type {
+  background: var(--sd-accent-soft) !important;
+  color: var(--sd-accent) !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  padding: 4px 12px !important;
+  font-size: var(--sd-text-2xs) !important;
+  font-weight: var(--sd-weight-semi) !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+.studydesk-alert button:first-of-type:hover {
+  background: rgba(79, 143, 247, 0.20) !important;
+}
+
+/* ── REVIEW BUTTONS (AGAIN/HARD/GOOD/EASY) — pill row ── */
+button[class*="px-1.5 py-1 rounded text-[10px]"],
+.review-actions button {
+  border-radius: 999px !important;
+  padding: 6px 0 !important;
+  font-size: 10.5px !important;
+  letter-spacing: 0.06em !important;
+  background: var(--sd-ink-2);
+  border: 1px solid var(--sd-line);
+  color: var(--sd-fg-2);
+}
+button[class*="px-1.5 py-1 rounded text-[10px]"]:hover,
+.review-actions button:hover {
+  background: var(--sd-ink-3);
+  color: var(--sd-fg-1);
+  border-color: var(--sd-line-strong);
+}
+
+/* ── COVERAGE BADGE — pill ── */
+.coverage-badge {
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+
+/* ── MODAL · NotebookLM-style oversized rounded-card ── */
+.cmdk-shell,
+.quiz-back-shell,
+.revisions-modal,
+.document-more-popover {
+  border-radius: 18px !important;
+}
+.document-more-popover {
+  border-radius: 12px !important;
+}
+
+/* ── EMPTY STATES — drop the kbd serif italic, sans throughout ── */
+.notes-empty-hero p {
+  font-family: var(--sd-font-ui) !important;
+  font-size: var(--sd-text-md);
+}
+.notes-empty-hero kbd {
+  font-family: var(--sd-font-mono) !important;
+}
+
+/* ── SECTION EYEBROWS · sentence case, lighter weight ──
+   NotebookLM doesn't do all-caps eyebrows. Switch to title-case +
+   medium weight for less shouty hierarchy. */
+.text-\[10px\].font-bold.uppercase.tracking-wider,
+.timeline-eyebrow,
+.phase3-eyebrow,
+.notes-eyebrow {
+  text-transform: none !important;
+  letter-spacing: -0.005em !important;
+  font-size: var(--sd-text-xs) !important;
+  font-weight: var(--sd-weight-semi) !important;
+  color: var(--sd-fg-3);
+}
+
+/* ── CITATION CHIP · numbered superscript pill ──
+   sourceQuote and footnote nodes both should render their numbers
+   as small filled pills, NotebookLM's recognisable inline citation. */
+.footnote-ref {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: var(--sd-accent-soft);
+  color: var(--sd-accent);
+  border-radius: 999px;
+  font-family: var(--sd-font-ui);
+  font-size: 10px;
+  font-weight: var(--sd-weight-semi);
+  letter-spacing: 0;
+  vertical-align: super;
+  line-height: 1;
+  margin: 0 2px;
+  cursor: pointer;
+  transition: background var(--sd-trans-fast);
+}
+.footnote-ref:hover {
+  background: var(--sd-accent);
+  color: white;
+}
+
+/* ── DOCUMENT MORE menu · larger radius ── */
+.document-more-popover {
+  background: var(--sd-ink-2);
+  border: 1px solid var(--sd-line-strong);
+  box-shadow: var(--sd-shadow-3);
+}
+.document-more-popover button[role="menuitem"] {
+  border-radius: 8px;
+}
+
+/* ── SCROLLBARS · slimmer ── */
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}

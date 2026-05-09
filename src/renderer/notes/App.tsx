@@ -12,6 +12,7 @@ import { isDuplicateQuestion, isDuplicateFlashcard } from './lib/studyDedup'
 import { CommandPalette } from './components/CommandPalette'
 import { QuizMeBackModal } from './components/QuizMeBackModal'
 import { PanicModeModal } from './components/PanicModeModal'
+import { StudioPanel } from './components/StudioPanel'
 import { selectPanicItems } from './lib/panicMode'
 import type { SearchHit } from './lib/searchIndex'
 import { routePaletteHit } from './lib/paletteRouter'
@@ -324,6 +325,13 @@ export default function App() {
   // retrievability heuristic. State at App level so the trigger can
   // live anywhere (cmdk action / course header / FlashcardsView).
   const [panicOpen, setPanicOpen] = useState(false)
+  // Studio panel can dispatch 'studydesk:panic-open' to trigger panic
+  // mode. Listening at App level keeps the modal state with its owner.
+  useEffect(() => {
+    const onPanic = () => setPanicOpen(true)
+    window.addEventListener('studydesk:panic-open', onPanic)
+    return () => window.removeEventListener('studydesk:panic-open', onPanic)
+  }, [])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -1250,19 +1258,31 @@ export default function App() {
         />
       </MainPanel>
 
-      {/* Right Panel — Documents tabs (SurfSense RightPanel) */}
+      {/* Right Panel — Studio. NotebookLM affordance: vertical stack of
+          generation cards (Brief, Study Guide, Quiz me, Panic mode,
+          Inbox, Health). Replaces the previous Documents sub-tab strip
+          per user redesign request. */}
       {rightPanelOpen ? (
-        <RightPanel
-          open={rightPanelOpen}
-          onClose={() => setRightPanelOpen(false)}
-          activeTab={rightTab}
-          onTabChange={setRightTab}
-          sourcesSlot={sourcesContent}
-          materialsSlot={materialsContent}
-          studySlot={studyContent}
-          healthSlot={healthContent}
-          healthBadge={lintSummary.warnCount}
-        />
+        <aside className="hidden md:flex w-[320px] shrink-0 rounded-xl border border-white/[0.06] overflow-hidden" style={{ background: 'var(--sd-ink-1)' }}>
+          <StudioPanel
+            notes={notes}
+            deadlines={visibleDeadlines}
+            alerts={alerts}
+            studyItems={visibleStudyItems}
+            confusions={unresolvedConfusions}
+            lintIssues={lintIssues}
+            courseId={currentCourse?.id}
+            // Quiz-me-back state lives in DocumentWorkspace (it depends on
+            // the workspace's `selected` note). Bridge with a DOM event
+            // so the Studio button can trigger it without lifting state.
+            // DocumentWorkspace listens for 'studydesk:quiz-me-back-open'.
+            onOpenQuizMeBack={() => window.dispatchEvent(new CustomEvent('studydesk:quiz-me-back-open'))}
+            onOpenPanic={() => window.dispatchEvent(new CustomEvent('studydesk:panic-open'))}
+            onOpenNote={(n) => setSelected(n)}
+            onResolveAlert={(id) => resolveAlert(id)}
+            onCompleteDeadline={(id) => completeDeadline(id)}
+          />
+        </aside>
       ) : (
         <RightPanelCollapsedButton
           onClick={() => setRightPanelOpen(true)}
@@ -1706,6 +1726,16 @@ function DocumentWorkspace({
       setShowQuizMeBack(true)
     })
   }
+
+  // Listen for the Studio panel's "Quiz me back" / "Panic mode" trigger
+  // events. DOM event bridge avoids lifting modal state to App level.
+  useEffect(() => {
+    const onQuiz = () => openQuizMeBack()
+    window.addEventListener('studydesk:quiz-me-back-open', onQuiz)
+    return () => {
+      window.removeEventListener('studydesk:quiz-me-back-open', onQuiz)
+    }
+  }, [selected])
   // UX: collapse the noisy export/history/delete row behind a single
   // "More" menu so the document header is breathable. Inline buttons
   // remain only for actions that are contextual (Create question on

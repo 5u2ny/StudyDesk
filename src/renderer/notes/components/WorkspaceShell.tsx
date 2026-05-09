@@ -102,7 +102,7 @@ export function IconRail({ courses, activeCourseId, onSelectCourse, onAddCourse,
 export function PanelCard({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={cn(
-      'rounded-xl border border-white/[0.06] bg-[#0d0d12] flex flex-col overflow-hidden',
+      'rounded-xl border border-white/[0.06] bg-[var(--sd-ink-1)] flex flex-col overflow-hidden',
       className
     )}>{children}</div>
   )
@@ -290,7 +290,7 @@ interface MainPanelProps {
 export function MainPanel({ tabs, activeTabId, onTabSelect, rightActions, children }: MainPanelProps) {
   const activeTab = tabs.find(t => t.id === activeTabId)
   return (
-    <main className="flex-1 min-w-0 rounded-xl border border-white/[0.06] bg-[#0a0a10] flex flex-col overflow-hidden">
+    <main className="flex-1 min-w-0 rounded-xl border border-white/[0.06] bg-[var(--sd-ink-1)] flex flex-col overflow-hidden">
       <header className="flex items-center h-11 px-2 border-b border-white/[0.06] shrink-0 gap-2">
         <nav className="flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto scrollbar-none">
           {tabs.map(tab => {
@@ -421,7 +421,7 @@ export function RightPanelCollapsedButton({ onClick, badge }: { onClick: () => v
   return (
     <button
       onClick={onClick}
-      className="hidden md:flex w-9 h-16 rounded-l-xl items-center justify-center border border-r-0 border-white/[0.06] bg-[#0d0d12] hover:bg-[#15151c] text-white/55 hover:text-white relative shrink-0 self-center transition-colors"
+      className="hidden md:flex w-9 h-16 rounded-l-xl items-center justify-center border border-r-0 border-white/[0.06] bg-[var(--sd-ink-1)] hover:bg-[var(--sd-ink-2)] text-white/55 hover:text-white relative shrink-0 self-center transition-colors"
       title="Open Documents panel"
     >
       <ChevronLeft size={14} />

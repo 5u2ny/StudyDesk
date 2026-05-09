@@ -5112,3 +5112,453 @@ button[class*="px-1.5 py-1 rounded text-[10px]"]:hover,
   width: 6px;
   height: 6px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   STUDYDESK DESIGN v4 · LIGHT THEME (new default)
+   ═══════════════════════════════════════════════════════════════════
+   User asked to switch the workspace to light. NotebookLM ships light
+   as default; we follow.
+
+   Strategy: override the :root ink palette when the document is in
+   light mode. The previous dark stack is preserved as opt-in (via
+   data-theme="dark" or system preference).
+
+   Foreground/background invert. Single accent stays NotebookLM blue.
+   Semantic mints/honeys/dusty-reds shift to warmer tints. */
+
+:root {
+  /* === Light = default ============================================
+     Five-tier paper scale: white page, slightly-warmer surfaces,
+     hairline keylines (instead of opaque borders). */
+  --sd-ink-0: #fafaf7;     /* page bg — warm off-white, less clinical */
+  --sd-ink-1: #ffffff;     /* card bg — clean paper */
+  --sd-ink-2: #f4f4ef;     /* card-inside, hover */
+  --sd-ink-3: #ebebe5;     /* active row, focused field */
+  --sd-ink-4: #e1e1da;     /* lifted, popover */
+
+  /* Foreground inverts. Near-black for body, descending grays for
+     hierarchy. Pure black is too harsh on warm paper. */
+  --sd-fg-1: #1c1d22;      /* primary */
+  --sd-fg-2: #4d4f57;      /* secondary */
+  --sd-fg-3: #7a7c84;      /* tertiary */
+  --sd-fg-4: #b0b2b8;      /* muted, placeholders */
+
+  /* NotebookLM blue stays. Adjust soft+stroke alphas for legibility
+     on white. */
+  --sd-accent:        #4f8ff7;
+  --sd-accent-soft:   rgba(79, 143, 247, 0.10);
+  --sd-accent-stroke: rgba(79, 143, 247, 0.32);
+
+  /* Semantics shift slightly warmer to read on white. */
+  --sd-success:       #2d9669;
+  --sd-warn:          #c98a3d;
+  --sd-danger:        #c75864;
+
+  /* Hairlines on light — much subtler tint of black. */
+  --sd-line:        rgba(0, 0, 0, 0.06);
+  --sd-line-strong: rgba(0, 0, 0, 0.10);
+
+  /* Re-bind legacy tokens. */
+  --sd-blue: var(--sd-accent);
+  --sd-text: var(--sd-fg-1);
+  --sd-muted: var(--sd-fg-3);
+  --sd-hairline: var(--sd-line);
+  --sd-glass: var(--sd-ink-1);
+  --sd-glass-strong: var(--sd-ink-2);
+
+  /* Shadows on light = much softer, no inset highlight. */
+  --sd-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --sd-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.06), 0 1px 0 rgba(0, 0, 0, 0.04);
+  --sd-shadow-3: 0 16px 40px rgba(0, 0, 0, 0.10), 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+/* === Dark = opt-in ONLY =============================================
+   User asked for light as the default. Dark is reachable only via
+   [data-theme="dark"] on the root element — never via system pref.
+   NotebookLM does the same: light unless you explicitly ask for dark. */
+:root[data-theme="dark"] {
+  --sd-ink-0: #0e0f14;
+  --sd-ink-1: #16171d;
+  --sd-ink-2: #1e1f27;
+  --sd-ink-3: #282a34;
+  --sd-ink-4: #34363f;
+  --sd-fg-1: #e8eaf0;
+  --sd-fg-2: #b8bcc6;
+  --sd-fg-3: #80858f;
+  --sd-fg-4: #555861;
+  --sd-line: rgba(255, 255, 255, 0.06);
+  --sd-line-strong: rgba(255, 255, 255, 0.10);
+  --sd-accent-soft: rgba(79, 143, 247, 0.13);
+}
+
+/* ── BASE & BODY · re-skin to read off paper ─────────────────────── */
+body {
+  background: var(--sd-ink-0);
+  color: var(--sd-fg-1);
+}
+
+/* The hardcoded #0a0a10 backgrounds in the workspace shell were dark-
+   mode assumptions. Replace with token references everywhere they
+   were inlined as Tailwind arbitraries. */
+.flex.h-full.bg-\[\#0a0a10\] {
+  background: var(--sd-ink-0) !important;
+}
+/* (Removed: attribute selector with escaped # was failing
+    lightningcss minification. The hardcoded class string has
+    been replaced in WorkspaceShell.tsx with bg-[var(--sd-ink-1)]
+    tokens, which inherit theme correctly.) */
+
+/* Rebind every Tailwind white/[0.x] surface to the token system so
+   all the hover / active / hairline states track theme. */
+[class*="bg-white\\/\\[0\\.04\\]"]:not(.cmdk-row):not(button) { background: var(--sd-ink-1) !important; }
+[class*="bg-white\\/\\[0\\.06\\]"] { background: var(--sd-ink-2) !important; }
+[class*="bg-white\\/\\[0\\.08\\]"] { background: var(--sd-ink-3) !important; }
+[class*="bg-white\\/\\[0\\.03\\]"] { background: var(--sd-ink-1) !important; }
+[class*="border-white\\/\\[0\\.06\\]"] { border-color: var(--sd-line) !important; }
+[class*="border-white\\/\\[0\\.08\\]"] { border-color: var(--sd-line-strong) !important; }
+[class*="border-white\\/\\[0\\.10\\]"] { border-color: var(--sd-line-strong) !important; }
+[class*="text-white\\/55"] { color: var(--sd-fg-3) !important; }
+[class*="text-white\\/45"] { color: var(--sd-fg-3) !important; }
+[class*="text-white\\/40"] { color: var(--sd-fg-4) !important; }
+[class*="text-white\\/35"] { color: var(--sd-fg-4) !important; }
+[class*="text-white\\/85"] { color: var(--sd-fg-2) !important; }
+[class*="text-white\\/90"] { color: var(--sd-fg-1) !important; }
+[class*="text-white\\/95"] { color: var(--sd-fg-1) !important; }
+
+/* Editor body (light): clear paper white, readable ink. */
+.ProseMirror {
+  color: var(--sd-fg-1) !important;
+  font-family: var(--sd-font-display);
+}
+.ProseMirror p { color: var(--sd-fg-1); }
+
+/* Inputs on light: white field, gray placeholder, accent halo. */
+input[type="text"], input[type="search"], textarea,
+.syllabus-paste-area, .syllabus-inline-edit {
+  background: white !important;
+  border: 1px solid var(--sd-line-strong) !important;
+  color: var(--sd-fg-1) !important;
+}
+input::placeholder, textarea::placeholder { color: var(--sd-fg-4) !important; }
+
+/* Sidebar rows on light. */
+.sidebar-row.active,
+.sidebar-row[aria-selected="true"],
+button[class*="sidebar-row"][class*="active"] {
+  background: var(--sd-accent-soft) !important;
+  color: var(--sd-accent) !important;
+}
+
+/* Workspace eyebrow (small section label). */
+.text-\[10px\].font-bold.uppercase.tracking-wider {
+  color: var(--sd-fg-3) !important;
+}
+
+/* Modal overlay — softer scrim on light. */
+.cmdk-backdrop, .quiz-back-backdrop, .revisions-modal-backdrop {
+  background: rgba(20, 22, 30, 0.40) !important;
+}
+
+/* Late-night CSS still overrides regardless of theme — research
+   finding stands. Soften further on light to avoid harsh inversion. */
+body[data-time-of-day="late"] {
+  filter: brightness(0.92) saturate(0.95);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   STUDIO PANEL · NotebookLM right-pane affordance
+   ═══════════════════════════════════════════════════════════════════ */
+
+.studio-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--sd-ink-1);
+}
+.studio-panel-head {
+  padding: var(--sd-space-5) var(--sd-space-5) var(--sd-space-3);
+  border-bottom: 1px solid var(--sd-line);
+}
+.studio-panel-head .studio-eyebrow {
+  display: block;
+  font-size: var(--sd-text-2xs);
+  font-weight: var(--sd-weight-semi);
+  letter-spacing: 0;
+  color: var(--sd-fg-3);
+  margin-bottom: 4px;
+}
+.studio-panel-head h2 {
+  font-family: var(--sd-font-display);
+  font-size: var(--sd-text-lg);
+  font-weight: var(--sd-weight-bold);
+  letter-spacing: -0.013em;
+  color: var(--sd-fg-1);
+  margin: 0;
+}
+
+.studio-stack {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sd-space-3) var(--sd-space-3) var(--sd-space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sd-space-2);
+}
+
+/* ── Studio card ─────────────────────────────────────────────────── */
+.studio-card {
+  background: var(--sd-ink-1);
+  border: 1px solid var(--sd-line);
+  border-radius: var(--sd-radius-card);
+  overflow: hidden;
+  transition: border-color var(--sd-trans-fast), box-shadow var(--sd-trans-fast);
+}
+.studio-card:hover { border-color: var(--sd-line-strong); }
+.studio-card.is-open {
+  background: var(--sd-ink-1);
+  box-shadow: var(--sd-shadow-1);
+}
+.studio-card.is-accent {
+  border-color: var(--sd-accent-stroke);
+  background: linear-gradient(180deg, var(--sd-accent-soft), transparent 80%);
+}
+
+.studio-card-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  color: var(--sd-fg-1);
+  transition: background var(--sd-trans-fast);
+}
+.studio-card-head:hover { background: var(--sd-ink-2); }
+.studio-card-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--sd-accent-soft);
+  color: var(--sd-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.studio-card-titles {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.studio-card-title {
+  font-family: var(--sd-font-display);
+  font-size: var(--sd-text-md);
+  font-weight: var(--sd-weight-semi);
+  letter-spacing: -0.005em;
+  color: var(--sd-fg-1);
+  line-height: 1.25;
+}
+.studio-card-desc {
+  font-size: var(--sd-text-xs);
+  color: var(--sd-fg-3);
+  line-height: 1.35;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.studio-card-badge {
+  font-size: var(--sd-text-2xs);
+  font-weight: var(--sd-weight-semi);
+  background: var(--sd-accent);
+  color: white;
+  border-radius: 999px;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.studio-card-chev {
+  color: var(--sd-fg-4);
+}
+.studio-card-body {
+  padding: 0 14px 14px;
+  border-top: 1px solid var(--sd-line);
+  margin-top: 0;
+}
+.card-note {
+  font-size: var(--sd-text-sm);
+  color: var(--sd-fg-2);
+  line-height: 1.5;
+  margin: 12px 0;
+}
+.card-note.muted { color: var(--sd-fg-3); font-style: italic; }
+.card-section-head {
+  font-size: var(--sd-text-2xs);
+  font-weight: var(--sd-weight-semi);
+  color: var(--sd-fg-3);
+  margin: 12px 0 6px;
+  letter-spacing: 0;
+}
+
+/* Brief list */
+.brief-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.brief-row { font-size: var(--sd-text-sm); }
+.brief-title {
+  background: transparent;
+  border: 0;
+  color: var(--sd-fg-1);
+  font-family: var(--sd-font-display);
+  font-weight: var(--sd-weight-semi);
+  font-size: var(--sd-text-sm);
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+.brief-title:hover { color: var(--sd-accent); }
+.brief-subs { list-style: none; padding: 0; margin: 4px 0 0 12px; color: var(--sd-fg-3); font-size: var(--sd-text-xs); display: flex; flex-direction: column; gap: 2px; }
+.brief-more { color: var(--sd-fg-4); font-style: italic; }
+
+/* Study guide list */
+.guide-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px; }
+.guide-row.level-3 { padding-left: 14px; border-left: 2px solid var(--sd-line); }
+.guide-heading {
+  background: transparent;
+  border: 0;
+  font-family: var(--sd-font-display);
+  font-size: var(--sd-text-sm);
+  font-weight: var(--sd-weight-semi);
+  letter-spacing: -0.005em;
+  color: var(--sd-fg-1);
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+.guide-heading:hover { color: var(--sd-accent); }
+.guide-summary {
+  font-size: var(--sd-text-xs);
+  color: var(--sd-fg-2);
+  margin: 3px 0 0;
+  line-height: 1.45;
+}
+.guide-source {
+  font-size: 10.5px;
+  color: var(--sd-fg-4);
+  letter-spacing: 0;
+  display: block;
+  margin-top: 3px;
+}
+
+/* Inbox list */
+.inbox-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.inbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--sd-ink-2);
+  border-radius: 8px;
+  font-size: var(--sd-text-xs);
+}
+.inbox-row.is-overdue { background: rgba(199, 88, 100, 0.08); }
+.inbox-row-body { flex: 1; min-width: 0; }
+.inbox-row-body strong { display: block; font-weight: var(--sd-weight-semi); color: var(--sd-fg-1); font-size: var(--sd-text-sm); }
+.inbox-row-body em { font-style: normal; color: var(--sd-fg-3); font-size: 10.5px; }
+.inbox-row .inline-action {
+  background: var(--sd-accent-soft);
+  color: var(--sd-accent);
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 10.5px;
+  font-weight: var(--sd-weight-semi);
+  cursor: pointer;
+}
+.inbox-row .inline-action:hover { background: var(--sd-accent); color: white; }
+
+/* Confusion list */
+.confusion-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.confusion-row { padding: 8px 10px; background: var(--sd-ink-2); border-radius: 8px; font-size: var(--sd-text-sm); color: var(--sd-fg-1); }
+.confusion-row strong { display: block; font-weight: var(--sd-weight-semi); }
+.confusion-row em { font-style: normal; color: var(--sd-fg-3); font-size: var(--sd-text-xs); display: block; margin-top: 3px; }
+
+/* Empty hints */
+.studio-empty { padding: 16px 4px; text-align: center; }
+.studio-empty strong { display: block; color: var(--sd-fg-2); font-weight: var(--sd-weight-semi); font-size: var(--sd-text-sm); }
+.studio-empty p { color: var(--sd-fg-3); font-size: var(--sd-text-xs); margin: 4px 0 0; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   STUDYDESK · LIGHT THEME · stronger Tailwind override pass
+   ═══════════════════════════════════════════════════════════════════
+   The first light-theme block didn't win specificity over Tailwind's
+   hardcoded bg-[#0a0a10] / bg-[#0d0d12] arbitraries. Bumping with
+   attribute selectors at higher specificity. */
+
+/* Removed escaped attribute selectors that didn't survive lightningcss
+   minification — the corresponding JSX has been migrated to use
+   bg-[var(--sd-ink-1)] tokens directly. */
+
+/* The workspace shell hardcoded bg-[#0a0a10] / bg-[#0d0d12] strings
+   have been replaced with bg-[var(--sd-ink-1)] in WorkspaceShell.tsx,
+   so they now track theme tokens directly. The escaped attribute
+   selectors that were here trip lightningcss minification — leaving
+   them out and relying on the JSX-level token references. */
+
+/* Main panel chrome bg */
+html body main.flex-1 {
+  background: var(--sd-ink-1) !important;
+}
+
+/* Editor content area */
+html body .ProseMirror {
+  color: var(--sd-fg-1) !important;
+}
+html body .ProseMirror p,
+html body .ProseMirror li {
+  color: var(--sd-fg-1) !important;
+}
+
+/* Tab strip border + buttons inherit foreground tokens */
+html body nav button {
+  color: var(--sd-fg-2);
+}
+html body nav button[class*="bg-white\\/\\[0\\.08\\]"] {
+  color: var(--sd-accent) !important;
+}
+
+/* Search input */
+html body input[type="text"][placeholder*="Search"] {
+  background: var(--sd-ink-1) !important;
+  color: var(--sd-fg-1) !important;
+}
+
+/* Sidebar section headers and rows */
+html body .flex.flex-col [class*="text-white"] {
+  color: var(--sd-fg-2) !important;
+}
+
+/* (Removed: Tailwind arbitrary-size selectors with escaped brackets
+    fail lightningcss minification. The targeted text-white inside
+    sidebar headers is already covered by .flex.flex-col [class*=
+    "text-white"] above.) */
+
+/* Hardcoded #0d0d12, #0e0e15 etc. from the right-panel widgets */
+[style*="background: rgb(13, 13, 18)"],
+[style*="background-color: rgb(13, 13, 18)"] {
+  background: var(--sd-ink-1) !important;
+}
+
+/* Course rail icon-rail — using only attribute-no-bracket selectors
+   so lightningcss minifier doesn't choke. */
+html body .flex.h-full > div[class*="w-12"],
+html body .flex.h-full > div[class*="w-14"],
+html body .flex.h-full > div[class*="w-\\[60px\\]"] {
+  background: var(--sd-ink-0) !important;
+  border-right-color: var(--sd-line) !important;
+}

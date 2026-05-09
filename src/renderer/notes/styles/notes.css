@@ -5562,3 +5562,160 @@ html body .flex.h-full > div[class*="w-\\[60px\\]"] {
   background: var(--sd-ink-0) !important;
   border-right-color: var(--sd-line) !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   STUDYDESK DESIGN v4.1 · LIGHT-THEME PATCH (review fix-up)
+   ═══════════════════════════════════════════════════════════════════
+   The v4 light-theme block used escaped attribute selectors like
+   [class*="text-white\\/55"]. After CSS parsing those resolved to a
+   literal backslash in the selector, but the DOM class attribute
+   contains just `text-white/55` (no backslash). Result: NONE of
+   those rebinds were firing. Hence: invisible white-on-white text in
+   the sidebar rows, faded headings, dead toolbar icons.
+
+   Fix: drop the escapes. Attribute substring matchers don't need to
+   escape `/` — it's just a literal character inside a CSS string.
+   Also fill in the previously-missing opacity steps (text-white/30,
+   /50, /60, /65, /70, /80, plus bare text-white) and bg/border
+   tokens that weren't in v4. */
+
+/* Foreground rebinds — order matters, more-specific wins via the
+   later cascade rule. */
+[class*="text-white/95"] { color: var(--sd-fg-1) !important; }
+[class*="text-white/90"] { color: var(--sd-fg-1) !important; }
+[class*="text-white/85"] { color: var(--sd-fg-2) !important; }
+[class*="text-white/80"] { color: var(--sd-fg-2) !important; }
+[class*="text-white/70"] { color: var(--sd-fg-2) !important; }
+[class*="text-white/65"] { color: var(--sd-fg-3) !important; }
+[class*="text-white/60"] { color: var(--sd-fg-3) !important; }
+[class*="text-white/55"] { color: var(--sd-fg-3) !important; }
+[class*="text-white/50"] { color: var(--sd-fg-3) !important; }
+[class*="text-white/45"] { color: var(--sd-fg-3) !important; }
+[class*="text-white/40"] { color: var(--sd-fg-4) !important; }
+[class*="text-white/35"] { color: var(--sd-fg-4) !important; }
+[class*="text-white/30"] { color: var(--sd-fg-4) !important; }
+/* Bare `text-white` (no opacity) appears in places like the editor
+   B I U toolbar SVGs. Without this it stays #ffffff — invisible on
+   light paper. Match the broadest substring last so the more-
+   specific opacity rules above keep their precedence. */
+.text-white:not([class*="text-white/"]) { color: var(--sd-fg-1) !important; }
+
+/* Background rebinds — Tailwind arbitrary `bg-white/[0.0x]`. */
+[class*="bg-white/[0.02]"] { background: var(--sd-ink-0) !important; }
+[class*="bg-white/[0.03]"] { background: var(--sd-ink-1) !important; }
+[class*="bg-white/[0.04]"] { background: var(--sd-ink-1) !important; }
+[class*="bg-white/[0.05]"] { background: var(--sd-ink-2) !important; }
+[class*="bg-white/[0.06]"] { background: var(--sd-ink-2) !important; }
+[class*="bg-white/[0.07]"] { background: var(--sd-ink-2) !important; }
+[class*="bg-white/[0.08]"] { background: var(--sd-ink-3) !important; }
+[class*="bg-white/[0.09]"] { background: var(--sd-ink-3) !important; }
+[class*="bg-white/[0.10]"] { background: var(--sd-ink-3) !important; }
+
+/* Border rebinds. */
+[class*="border-white/[0.04]"] { border-color: var(--sd-line) !important; }
+[class*="border-white/[0.05]"] { border-color: var(--sd-line) !important; }
+[class*="border-white/[0.06]"] { border-color: var(--sd-line) !important; }
+[class*="border-white/[0.08]"] { border-color: var(--sd-line-strong) !important; }
+[class*="border-white/[0.10]"] { border-color: var(--sd-line-strong) !important; }
+[class*="border-white/[0.12]"] { border-color: var(--sd-line-strong) !important; }
+[class*="border-white/[0.18]"] { border-color: var(--sd-line-strong) !important; }
+[class*="border-white/[0.20]"] { border-color: var(--sd-line-strong) !important; }
+[class*="border-white/[0.30]"] { border-color: var(--sd-line-strong) !important; }
+
+/* ── EDITOR · headings + body actually visible on white ── */
+.ProseMirror,
+.ProseMirror p,
+.ProseMirror li,
+.ProseMirror blockquote {
+  color: var(--sd-fg-1) !important;
+}
+.ProseMirror h1, .ProseMirror h2, .ProseMirror h3 {
+  color: var(--sd-fg-1) !important;
+}
+/* Headings get a slightly darker treatment so the editorial
+   hierarchy reads. */
+.ProseMirror h1 { color: #0e0f14 !important; }
+.ProseMirror h2 { color: #1c1d22 !important; }
+
+/* Editor toolbar — the B I U H2 list quote etc. icons. Tailwind's
+   `text-white/55` was binding to white before v4.1; without the
+   visible color the icons disappeared on light. */
+.notes-tool-btn {
+  color: var(--sd-fg-2) !important;
+}
+.notes-tool-btn:hover {
+  background: var(--sd-ink-2);
+  color: var(--sd-fg-1) !important;
+}
+.notes-tool-btn.active {
+  background: var(--sd-accent-soft);
+  color: var(--sd-accent) !important;
+}
+.notes-tool-btn svg { color: currentColor; }
+
+/* ── SIDEBAR ROW · row title was invisible because text-white/95 was
+   targeting nothing. Belt-and-braces: scope per-row. */
+.SidebarRow strong,
+button[class*="sidebar-row"] strong,
+.sidebar-row strong {
+  color: var(--sd-fg-1) !important;
+  font-weight: var(--sd-weight-semi);
+}
+.SidebarRow span,
+button[class*="sidebar-row"] span,
+.sidebar-row span {
+  color: var(--sd-fg-2);
+}
+.SidebarRow em,
+button[class*="sidebar-row"] em,
+.sidebar-row em {
+  color: var(--sd-fg-3);
+}
+
+/* Section header eyebrows ("Syllabus Imports", "Notes" etc.) need
+   a real visible color on light. */
+[class*="ShellSidebarSection"] > header,
+.sidebar-section-header,
+.text-\[10px\].font-bold {
+  color: var(--sd-fg-3) !important;
+}
+
+/* Document save status + breadcrumb. */
+.document-card-header span,
+.document-context-row > span {
+  color: var(--sd-fg-3) !important;
+}
+
+/* ── TAB STRIP · active highlight visible on light ── */
+nav button[class*="bg-white/[0.08]"] {
+  background: var(--sd-accent-soft) !important;
+  color: var(--sd-accent) !important;
+}
+
+/* ── INPUTS that already had their own rules — light overrides ── */
+input[type="text"],
+input[type="search"],
+textarea,
+.syllabus-paste-area,
+.syllabus-inline-edit {
+  background: var(--sd-ink-1) !important;
+  color: var(--sd-fg-1) !important;
+}
+
+/* ── PANIC + QUIZ MODAL — re-skin to light surface ── */
+.quiz-back-shell,
+.cmdk-shell {
+  background: var(--sd-ink-1) !important;
+  border-color: var(--sd-line-strong) !important;
+}
+.quiz-back-row {
+  background: var(--sd-ink-1) !important;
+  border-color: var(--sd-line) !important;
+}
+.cmdk-input { color: var(--sd-fg-1) !important; }
+.cmdk-row.is-active .cmdk-title-text { color: var(--sd-accent) !important; }
+
+/* ── KEEP DARK MODE INTACT — the same selectors mean different colors
+   when dark is active because --sd-fg-* etc. flip via the dark
+   :root override at the top of the v4 block. So this v4.1 patch is
+   theme-aware automatically — no separate dark rules needed. */

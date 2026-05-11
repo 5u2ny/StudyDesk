@@ -414,6 +414,13 @@ describe('syllabusParserService edge cases', () => {
     expect(date.getDate()).toBe(15);
   });
 
+  test('removes due words, date, and time from parsed deadline titles', () => {
+    const result = syllabusParserService.parse({
+      text: 'Quiz 2 due May 1, 2026 at 11:59 PM\nFinal project proposal due May 8, 2026 at 11:59 PM'
+    });
+    expect(result.deadlines.map(d => d.title)).toEqual(['Quiz 2', 'Final project proposal']);
+  });
+
   test('presentation deadline gets correct type', () => {
     const result = syllabusParserService.parse({ text: 'Group Presentation due November 20, 2026' });
     expect(result.deadlines[0].type).toBe('presentation');

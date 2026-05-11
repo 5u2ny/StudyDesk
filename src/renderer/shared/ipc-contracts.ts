@@ -23,6 +23,10 @@ export interface IPCContracts {
   'capture:pin':    { req: { id: string; pinned: boolean }; res: Capture };
   'capture:update': { req: { id: string; patch: Partial<Capture> }; res: Capture };
 
+  // Capture linking
+  'capture:unlinked':   { req: { courseId?: string; limit?: number }; res: Capture[] };
+  'capture:linkToNote': { req: { captureIds: string[]; noteId: string }; res: { note: Note; linked: number } };
+
   // Notes
   'notes:list':   { req: void; res: Note[] };
   'notes:get':    { req: { id: string }; res: Note | null };
@@ -144,6 +148,16 @@ export interface IPCContracts {
 
   // Timer
   'timer:toggle': { req: void; res: void };
+
+  // AI Generation
+  'ai:generateQuiz': { req: { noteContent: string; count?: number }; res: Array<{ question: string; options: string[]; correct: number; explanation: string }> };
+  'ai:generateFlashcards': { req: { noteContent: string; count?: number }; res: Array<{ front: string; back: string }> };
+  'ai:generateStudyNotes': { req: { noteContent: string }; res: string };
+  'ai:summarize': { req: { content: string; maxLength?: number }; res: string };
+  'ai:checkOllama': { req: { endpoint?: string }; res: { ok: boolean; models?: string[]; error?: string } };
+
+  // Auto-tagging
+  'notes:autoTag': { req: { noteId: string }; res: { tags: string[] } };
 }
 
 export type IPCChannel = keyof IPCContracts;

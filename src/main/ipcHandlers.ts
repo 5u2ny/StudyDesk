@@ -32,8 +32,21 @@ import { buildRevealHtml } from './services/export/slideExport';
 import { publishStaticSite } from './services/export/staticSiteExport';
 import { flashcardSyncService } from './services/study/flashcardSyncService';
 import { buildICS, defaultFilename } from './services/calendar/icsExport';
+import { generateQuiz, generateFlashcards, generateStudyNotes, summarizeContent, checkOllamaHealth } from './services/llm/generationService';
 import { randomUUID } from 'node:crypto';
 import { significantWords, calendarDay, hasWordOverlap } from './services/syllabus/dedup';
+
+// Stop words for auto-tag keyword extraction (module-level for readability)
+const AUTO_TAG_STOP_WORDS = new Set([
+  'the','a','an','is','are','was','were','be','been','being','have','has','had',
+  'do','does','did','will','would','shall','should','may','might','can','could',
+  'i','you','he','she','it','we','they','my','your','his','her','its','our','their',
+  'this','that','these','those','and','but','or','nor','for','yet','so','in','on',
+  'at','to','from','by','with','of','about','into','through','during','before',
+  'after','above','below','between','out','off','over','under','again','further',
+  'then','once','here','there','when','where','why','how','all','each','every',
+  'both','few','more','most','other','some','such','no','not','only','same','than','too','very',
+]);
 
 let timerEngine: TimerEngine;
 
@@ -157,6 +170,61 @@ export function setupIPC() {
   ipcMain.handle('capture:update', (_e, req) => {
     focusStore.updateCapture(req.id, req.patch);
     return focusStore.get('captures').find(c => c.id === req.id)!;
+  });
+
+  // ── Focus OS: Capture Linking ──────────────────────────────────────────
+  ipcMain.handle('capture:unlinked', (_e, req: { courseId?: string; limit?: number }) => {
+    const captures = focusStore.get('captures');
+    const notes = notesService.list();
+    // Collect all captureIds that are already linked to any note
+    const linkedIds = new Set<string>();
+    for (const note of notes) {
+      if (note.capturedFromIds) {
+        for (const cid of note.capturedFromIds) linkedIds.add(cid);
+      }
+    }
+    let unlinked = captures.filter(c => !linkedIds.has(c.id));
+    if (req?.courseId) unlinked = unlinked.filter(c => c.courseId === req.courseId);
+    // Sort newest first
+    unlinked.sort((a, b) => b.createdAt - a.createdAt);
+    if (req?.limit) unlinked = unlinked.slice(0, req.limit);
+    return unlinked;
+  });
+
+  ipcMain.handle('capture:linkToNote', (_e, req: { captureIds: string[]; noteId: string }) => {
+    const note = notesService.get(req.noteId);
+    if (!note) throw new Error(`Note not found: ${req.noteId}`);
+    const existing = new Set(note.capturedFromIds || []);
+    const captures = focusStore.get('captures');
+    let linked = 0;
+
+    // Build TipTap content to append
+    const newBlocks: any[] = [];
+    for (const cid of req.captureIds) {
+      if (existing.has(cid)) continue; // idempotent: skip duplicates
+      const capture = captures.find(c => c.id === cid);
+      if (!capture) continue;
+      existing.add(cid);
+      linked++;
+      // Append as a sourceQuote node (matches existing TipTap extension)
+      newBlocks.push({
+        type: 'sourceQuote',
+        attrs: { captureId: cid, source: capture.sourceApp || capture.source },
+        content: [{ type: 'text', text: capture.text }],
+      });
+    }
+
+    // Merge into existing TipTap JSON content
+    let content: any;
+    try { content = JSON.parse(note.content); } catch { content = { type: 'doc', content: [] }; }
+    if (!content.content) content.content = [];
+    content.content.push(...newBlocks);
+
+    const updated = notesService.update(req.noteId, {
+      capturedFromIds: Array.from(existing),
+      content: JSON.stringify(content),
+    });
+    return { note: updated, linked };
   });
 
   // ── Focus OS: Notes ───────────────────────────────────────────────────
@@ -651,6 +719,53 @@ export function setupIPC() {
   ipcMain.handle('permission:checkAccessibility',    () => checkAccessibilityPermission());
   ipcMain.handle('permission:openAccessibilitySettings', () => openAccessibilitySettings());
   ipcMain.handle('system:safeStorageAvailable',       () => secureStore.isAvailable());
+
+  // ── AI Generation (Ollama / cloud LLM) ────────────────────────────────
+  ipcMain.handle('ai:generateQuiz', async (_e, req) => generateQuiz(req.noteContent, req.count));
+  ipcMain.handle('ai:generateFlashcards', async (_e, req) => generateFlashcards(req.noteContent, req.count));
+  ipcMain.handle('ai:generateStudyNotes', async (_e, req) => generateStudyNotes(req.noteContent));
+  ipcMain.handle('ai:summarize', async (_e, req: { content: string; maxLength?: number }) => summarizeContent(req.content, req.maxLength));
+  ipcMain.handle('ai:checkOllama', async (_e, req) => checkOllamaHealth(req?.endpoint));
+
+  // ── Notes: Auto-tag ─────────────────────────────────────────────────────
+  ipcMain.handle('notes:autoTag', async (_e, req: { noteId: string }) => {
+    const note = notesService.get(req.noteId);
+    if (!note) throw new Error(`Note not found: ${req.noteId}`);
+    // Extract plain text from TipTap JSON
+    let text = '';
+    try {
+      const doc = JSON.parse(note.content);
+      const walk = (nodes: any[]) => {
+        for (const n of nodes) {
+          if (n.text) text += n.text + ' ';
+          if (n.content) walk(n.content);
+        }
+      };
+      if (doc.content) walk(doc.content);
+    } catch { text = note.title || ''; }
+    // Simple keyword extraction: word frequency minus stop words
+    // Truncate to first 8000 chars for large notes
+    text = text.slice(0, 8000);
+    const words = text.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 3 && !AUTO_TAG_STOP_WORDS.has(w));
+    const freq = new Map<string, number>();
+    for (const w of words) freq.set(w, (freq.get(w) || 0) + 1);
+    // Top 3 keywords by frequency
+    const tags = [...freq.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([word]) => word);
+    // Also include course name as a tag if available
+    if (note.courseId) {
+      const course = coursesService.get(note.courseId);
+      if (course) {
+        const courseTag = course.code?.toLowerCase() || course.name.toLowerCase().split(' ')[0];
+        if (courseTag && !tags.includes(courseTag)) tags.unshift(courseTag);
+      }
+    }
+    // Update the note
+    notesService.update(note.id, { tags });
+    return { tags };
+  });
 
   // ── Focus OS: Window control ──────────────────────────────────────────
   ipcMain.handle('window:openNotes', (_e, r: { noteId?: string }) => {

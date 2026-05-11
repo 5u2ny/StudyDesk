@@ -91,6 +91,12 @@ const INVOKE_CHANNELS = new Set<string>([
   'window:openWorkspace',
   'window:openSettings',
   'window:getNotchHeight',
+  // AI generation
+  'ai:generateQuiz',
+  'ai:generateFlashcards',
+  'ai:generateStudyNotes',
+  'ai:checkOllama',
+  'ai:summarize',
 ]);
 
 const SUBSCRIBE_CHANNELS = new Set<string>([

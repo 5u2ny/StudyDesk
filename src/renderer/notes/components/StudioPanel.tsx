@@ -1,82 +1,46 @@
 // Studio panel — the right-hand pane.
 //
-// Replaces the previous Documents > Sources/Materials/Study/Health
-// sub-tab strip with a vertical stack of "Studio cards" — the
-// NotebookLM right-pane affordance. Each card is a feature: click
-// to expand, click to generate, click to act. Cards are independent;
-// state for one doesn't leak into another.
-//
-// Two principles drive the cards we ship:
-//   1. The brand promise is source-grounded refusal-to-invent. So
-//      the deterministic cards (Brief, Study Guide) are the
-//      defaults — no LLM, no synthesis, just extraction.
-//   2. The action-y cards (Quiz me, Panic mode, Forgive backlog)
-//      route to the existing modal flows so we don't fork state.
-//
-// Future-deferred cards (Audio Overview, Mind Map) are flagged in
-// the JSX but disabled — they require an LLM and we won't ship that
-// until we can match NotebookLM's hallucination floor.
+// Three cards only:
+//   1. Quiz — merges "Quiz me back" (deterministic heading extraction)
+//      + "Generate quiz" (AI-powered via Ollama)
+//   2. Flashcards — AI generate + save to deck
+//   3. Resources — curated links (sites, articles, YouTube, study areas)
 
-import React, { useState, useMemo } from 'react'
-import { ChevronDown, ChevronRight, FileText, BookOpen, Brain, AlertCircle, Activity, Inbox as InboxIcon, Sparkles, Network, Headphones } from 'lucide-react'
-import type { Note, AcademicDeadline, AttentionAlert, StudyItem, ConfusionItem } from '@schema'
-import { buildBrief, buildStudyGuide, type BriefSection, type StudyGuideEntry } from '../lib/studioGenerators'
-import type { LintIssue } from '../lib/noteHealth'
-import { summarizeIssues } from '../lib/noteHealth'
-import { isActiveAttentionAlert } from '@shared/lib/alerts'
+import React, { useState, useMemo, useCallback } from 'react'
+import { ChevronDown, ChevronRight, FileText, GitBranch, HelpCircle, Layers, Link2, Loader2, Merge, Plus, Sparkles, ExternalLink, X } from 'lucide-react'
+import type { Note, ConfusionItem } from '@schema'
+import { ipc } from '../../shared/ipc-client'
+import { mergeNoteContents } from '../lib/mergeNotes'
+import { RelatedNotesList } from './RelatedNotesList'
 
 export interface StudioPanelProps {
   notes: Note[]
-  deadlines: AcademicDeadline[]
-  alerts: AttentionAlert[]
-  studyItems: StudyItem[]
   confusions: ConfusionItem[]
-  lintIssues: LintIssue[]
-  /** Course filter — undefined means "all courses". */
   courseId?: string
-  /** True if the workspace currently has a note open. Drives whether
-   *  the "Quiz me back" card's CTA is enabled — clicking it without
-   *  an active note used to be a silent no-op (review C2). */
   hasActiveNote: boolean
-
-  /** Open the Quiz me back modal for the active note. */
+  activeNoteId?: string
+  activeNoteContent?: string
   onOpenQuizMeBack: () => void
-  /** Open the Panic mode (cram) modal for the current course. */
-  onOpenPanic: () => void
-  /** Click on a brief / study-guide row → open the source note. */
   onOpenNote: (note: Note) => void
-  /** Resolve / dismiss / snooze an alert. */
-  onResolveAlert: (id: string) => void
-  /** Mark a deadline complete. */
-  onCompleteDeadline: (id: string) => void
+  onCreateNote?: (title: string, content: string) => Promise<Note | void>
+  onSaveFlashcards?: (cards: Array<{ front: string; back: string }>) => void
+  onStatus?: (msg: string) => void
 }
 
 interface CardProps {
   id: string
   icon: React.ComponentType<any>
-  /** Title — primary identifier for the card. */
   title: string
-  /** One-line description shown under the title. */
   description: string
-  /** Open/closed state. Controlled — parent owns the toggle so it can
-   *  decide whether to run heavy generators based on which cards are
-   *  open. (Review I4.) */
   open: boolean
   onToggle: () => void
-  /** Optional numeric chip on the right edge. Shown only when > 0. */
   badge?: number
-  /** Optional accent treatment — used when the card needs urgency
-   *  (e.g. > 20 cards due in panic mode). */
-  accent?: boolean
-  /** Body — only rendered when open, so callers can compute lazily.
-   *  Pass a function to defer expensive work; pass JSX directly when
-   *  there's nothing heavy to compute. */
   children: React.ReactNode | (() => React.ReactNode)
 }
 
-function StudioCard({ id, icon: Icon, title, description, open, onToggle, badge, accent, children }: CardProps) {
+function StudioCard({ id, icon: Icon, title, description, open, onToggle, badge, children }: CardProps) {
   return (
-    <article className={`studio-card${accent ? ' is-accent' : ''}${open ? ' is-open' : ''}`} data-card={id}>
+    <article className={`studio-card${open ? ' is-open' : ''}`} data-card={id}>
       <button className="studio-card-head" onClick={onToggle} aria-expanded={open}>
         <span className="studio-card-icon"><Icon size={15} /></span>
         <span className="studio-card-titles">
@@ -93,327 +57,396 @@ function StudioCard({ id, icon: Icon, title, description, open, onToggle, badge,
 
 export function StudioPanel({
   notes,
-  deadlines,
-  alerts,
-  studyItems,
   confusions,
-  lintIssues,
   courseId,
   hasActiveNote,
+  activeNoteId,
+  activeNoteContent,
   onOpenQuizMeBack,
-  onOpenPanic,
   onOpenNote,
-  onResolveAlert,
-  onCompleteDeadline,
+  onCreateNote,
+  onSaveFlashcards,
+  onStatus,
 }: StudioPanelProps) {
-  // Course-scoped notes. If no course selected, brief reflects all
-  // notes — that's the "all courses" mode and matches the rest of
-  // the workspace's filtering convention.
-  const scopedNotes = useMemo(
-    () => courseId ? notes.filter(n => n.courseId === courseId) : notes,
-    [notes, courseId],
-  )
-
-  // Open-state lifted out of each <StudioCard> so the heavy generators
-  // (Brief, Study guide) only run when the corresponding card is open.
-  // Review I4: the previous unconditional buildBrief/buildStudyGuide
-  // ran a JSON.parse on every note on every render, even for cards
-  // the user had collapsed.
-  const [openCards, setOpenCards] = useState<Record<string, boolean>>({ brief: true })
+  const [openCards, setOpenCards] = useState<Record<string, boolean>>({ quiz: true })
   const toggle = (id: string) => setOpenCards(s => ({ ...s, [id]: !s[id] }))
   const isOpen = (id: string) => !!openCards[id]
 
-  // Tight count for the badge — uses just the array length, not the
-  // built object stream — so we can show the count cheaply without
-  // running the parse pipeline on collapsed cards.
-  const briefNoteCount = scopedNotes.length
+  // ── AI generation state ──────────────────────────────────────
+  const [aiQuiz, setAiQuiz] = useState<Array<{ question: string; options: string[]; correct: number; explanation: string }>>([])
+  const [aiFlashcards, setAiFlashcards] = useState<Array<{ front: string; back: string }>>([])
+  const [aiLoading, setAiLoading] = useState<string | null>(null)
+  const [aiError, setAiError] = useState<string | null>(null)
 
-  // Brief / Study guide computed lazily — only when their card is open.
-  const brief = useMemo<BriefSection[]>(
-    () => isOpen('brief') ? buildBrief(scopedNotes).slice(0, 12) : [],
-    [scopedNotes, openCards],
-  )
-  const guide = useMemo<StudyGuideEntry[]>(
-    () => isOpen('study-guide') ? buildStudyGuide(scopedNotes).slice(0, 24) : [],
-    [scopedNotes, openCards],
-  )
-  // Cheap study-guide badge count (lazy via small sample if collapsed).
-  // We don't need the exact count when collapsed; the user just wants
-  // a hint. Skip the heavy walk and use a noteCount-ish estimate.
-  const guideCountHint = isOpen('study-guide') ? guide.length : Math.min(scopedNotes.length * 3, 50)
+  // Resources state (local to panel — persisted per session)
+  const [resources, setResources] = useState<Array<{ url: string; title: string; type: string }>>([])
+  const [showAddResource, setShowAddResource] = useState(false)
+  const [newResourceUrl, setNewResourceUrl] = useState('')
+  const [newResourceTitle, setNewResourceTitle] = useState('')
 
-  // Inbox: overdue + due-this-week deadlines, plus active alerts.
-  // Bounded on both sides (review I1): -30d ≤ delta < +7d so a long
-  // vacation doesn't flood the panel with year-old overdue items.
-  const now = Date.now()
-  const DAY = 86_400_000
-  const inboxDeadlines = useMemo(() => deadlines
-    .filter(d => !d.completed)
-    .filter(d => !courseId || d.courseId === courseId)
-    .filter(d => {
-      const delta = d.deadlineAt - now
-      return delta > -30 * DAY && delta < 7 * DAY
-    })
-    .sort((a, b) => a.deadlineAt - b.deadlineAt)
-    .slice(0, 8), [deadlines, courseId, now])
+  const extractText = useCallback((content?: string): string => {
+    if (!content) return ''
+    try {
+      const doc = JSON.parse(content)
+      const walk = (node: any): string => {
+        if (!node) return ''
+        if (typeof node.text === 'string') return node.text
+        if (Array.isArray(node.content)) return node.content.map(walk).join(node.type === 'paragraph' ? '\n' : '')
+        return ''
+      }
+      return walk(doc)
+    } catch { return '' }
+  }, [])
 
-  // Active alerts via canonical predicate (review C1): excludes
-  // dismissed/resolved AND snoozed-while-snoozedUntil>now, but
-  // INCLUDES snoozed alerts whose snooze has elapsed — those should
-  // resurface, which the previous `status === 'new'` filter was
-  // silently hiding.
-  const activeAlerts = useMemo(() => alerts
-    .filter(a => isActiveAttentionAlert(a, now))
-    .slice(0, 5), [alerts, now])
+  const handleGenerateQuiz = useCallback(async () => {
+    const text = extractText(activeNoteContent)
+    if (!text) { setAiError('Open a note with content first'); return }
+    setAiLoading('quiz'); setAiError(null); setAiQuiz([])
+    try {
+      const result = await ipc.invoke<Array<{ question: string; options: string[]; correct: number; explanation: string }>>('ai:generateQuiz', { noteContent: text, count: 5 })
+      setAiQuiz(result)
+      onStatus?.(`Generated ${result.length} quiz questions`)
+    } catch (e: any) { setAiError(e.message ?? 'Quiz generation failed') }
+    finally { setAiLoading(null) }
+  }, [activeNoteContent, extractText, onStatus])
 
-  const dueCardsCount = studyItems.filter(s =>
-    (!courseId || s.courseId === courseId) &&
-    (!s.nextReviewAt || s.nextReviewAt <= now)
-  ).length
+  const handleGenerateFlashcards = useCallback(async () => {
+    const text = extractText(activeNoteContent)
+    if (!text) { setAiError('Open a note with content first'); return }
+    setAiLoading('flashcards'); setAiError(null); setAiFlashcards([])
+    try {
+      const result = await ipc.invoke<Array<{ front: string; back: string }>>('ai:generateFlashcards', { noteContent: text, count: 10 })
+      setAiFlashcards(result)
+      onStatus?.(`Generated ${result.length} flashcards`)
+    } catch (e: any) { setAiError(e.message ?? 'Flashcard generation failed') }
+    finally { setAiLoading(null) }
+  }, [activeNoteContent, extractText, onStatus])
 
-  const unresolvedQuestionCount = confusions.filter(c => c.status !== 'resolved' && (!courseId || c.courseId === courseId)).length
-  const lintSummary = summarizeIssues(lintIssues)
+  // ── AI Notes handlers ─────────────────────────────────────────
+  const [mergeSelection, setMergeSelection] = useState<Set<string>>(new Set())
+  const [showMergeSelect, setShowMergeSelect] = useState(false)
+
+  const handleGenerateNotes = useCallback(async () => {
+    const text = extractText(activeNoteContent)
+    if (!text) { setAiError('Open a note with content first'); return }
+    setAiLoading('ai-notes'); setAiError(null)
+    try {
+      const result = await ipc.invoke<string>('ai:generateStudyNotes', { noteContent: text })
+      // Create a new note with the generated content
+      const content = JSON.stringify({
+        type: 'doc',
+        content: result.split('\n').filter(Boolean).map(line => ({
+          type: 'paragraph',
+          content: [{ type: 'text', text: line }],
+        })),
+      })
+      if (onCreateNote) {
+        await onCreateNote('AI Study Notes', content)
+        onStatus?.('Study notes generated')
+      }
+    } catch (e: any) { setAiError(e.message ?? 'Note generation failed') }
+    finally { setAiLoading(null) }
+  }, [activeNoteContent, extractText, onCreateNote, onStatus])
+
+  const handleSummarize = useCallback(async () => {
+    const text = extractText(activeNoteContent)
+    if (!text) { setAiError('Open a note with content first'); return }
+    setAiLoading('summarize'); setAiError(null)
+    try {
+      const result = await ipc.invoke<string>('ai:summarize', { content: text })
+      const content = JSON.stringify({
+        type: 'doc',
+        content: result.split('\n').filter(Boolean).map(line => ({
+          type: 'paragraph',
+          content: [{ type: 'text', text: line }],
+        })),
+      })
+      if (onCreateNote) {
+        await onCreateNote('Summary', content)
+        onStatus?.('Summary generated')
+      }
+    } catch (e: any) { setAiError(e.message ?? 'Summarization failed') }
+    finally { setAiLoading(null) }
+  }, [activeNoteContent, extractText, onCreateNote, onStatus])
+
+  const handleMerge = useCallback(async () => {
+    if (mergeSelection.size < 2) { setAiError('Select at least 2 notes to merge'); return }
+    const selected = notes.filter(n => mergeSelection.has(n.id))
+    const content = mergeNoteContents(selected)
+    if (onCreateNote) {
+      await onCreateNote(`Merged: ${selected.map(n => n.title || 'Untitled').join(' + ')}`, content)
+      onStatus?.(`Merged ${selected.length} notes`)
+    }
+    setMergeSelection(new Set())
+    setShowMergeSelect(false)
+  }, [mergeSelection, notes, onCreateNote, onStatus])
+
+  const courseNotes = useMemo(() => {
+    return courseId ? notes.filter(n => n.courseId === courseId) : notes
+  }, [notes, courseId])
+
+  const addResource = () => {
+    if (!newResourceUrl.trim()) return
+    const url = newResourceUrl.trim()
+    const title = newResourceTitle.trim() || url
+    const type = url.includes('youtube.com') || url.includes('youtu.be') ? 'video'
+      : url.endsWith('.pdf') ? 'pdf'
+      : 'link'
+    setResources(prev => [...prev, { url, title, type }])
+    setNewResourceUrl('')
+    setNewResourceTitle('')
+    setShowAddResource(false)
+    onStatus?.('Resource added')
+  }
+
+  const removeResource = (index: number) => {
+    setResources(prev => prev.filter((_, i) => i !== index))
+  }
 
   return (
     <div className="studio-panel">
       <header className="studio-panel-head">
         <span className="studio-eyebrow">Studio</span>
-        <h2>Generate &amp; review</h2>
+        <h2>Study tools</h2>
       </header>
 
       <div className="studio-stack">
-        {/* ── ACTIVE generation cards ────────────────────────────── */}
-        <StudioCard
-          id="brief"
-          open={isOpen('brief')} onToggle={() => toggle('brief')}
-          icon={FileText}
-          title="Brief"
-          description={`Outline of ${scopedNotes.length} note${scopedNotes.length === 1 ? '' : 's'}, latest first`}
-          
-        >
-          {brief.length === 0 ? (
-            <EmptyHint message="No notes yet">Add a note to see the brief.</EmptyHint>
-          ) : (
-            <ul className="brief-list">
-              {brief.map(section => (
-                <li key={section.noteId} className="brief-row">
-                  <button className="brief-title" onClick={() => {
-                    const n = notes.find(nn => nn.id === section.noteId)
-                    if (n) onOpenNote(n)
-                  }}>
-                    {section.noteTitle}
-                  </button>
-                  {section.headings.length > 0 && (
-                    <ul className="brief-subs">
-                      {section.headings.slice(0, 4).map((h, i) => (
-                        <li key={i}>· {h}</li>
-                      ))}
-                      {section.headings.length > 4 && <li className="brief-more">+{section.headings.length - 4} more</li>}
-                    </ul>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </StudioCard>
-
-        <StudioCard
-          id="study-guide"
-          open={isOpen('study-guide')} onToggle={() => toggle('study-guide')}
-          icon={BookOpen}
-          title="Study guide"
-          description="Every heading + its first sentence — the user's own words"
-          badge={guideCountHint}
-        >
-          {guide.length === 0 ? (
-            <EmptyHint message="Nothing to compile yet">Add H2 / H3 headings to your notes — they become the study guide.</EmptyHint>
-          ) : (
-            <ul className="guide-list">
-              {guide.map((entry, i) => (
-                <li key={i} className={`guide-row level-${entry.level}`}>
-                  <button className="guide-heading" onClick={() => {
-                    const n = notes.find(nn => nn.id === entry.noteId)
-                    if (n) onOpenNote(n)
-                  }}>{entry.heading}</button>
-                  {entry.firstSentence && <p className="guide-summary">{entry.firstSentence}</p>}
-                  <span className="guide-source">— {entry.noteTitle}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </StudioCard>
-
-        <StudioCard
-          id="quiz-me"
-          open={isOpen('quiz-me')} onToggle={() => toggle('quiz-me')}
-          icon={Sparkles}
-          title="Quiz me back"
-          description={hasActiveNote
-            ? "Turn the active note's headings into review questions"
-            : 'Open a note in the workspace to enable this'}
-        >
-          <p className="card-note">
-            {hasActiveNote
-              ? 'Click to extract candidate questions from the active note. You decide which ones become flashcards — no AI invention, just your headings.'
-              : 'No note is open right now. Pick one from the sidebar (or click a row in Brief above), then come back.'}
-          </p>
-          <button
-            className="review-button"
-            onClick={onOpenQuizMeBack}
-            disabled={!hasActiveNote}
-            title={hasActiveNote ? 'Extract candidate questions from this note' : 'No active note'}
-          >
-            Quiz me from this note
-          </button>
-        </StudioCard>
-
-        <StudioCard
-          id="panic"
-          open={isOpen('panic')} onToggle={() => toggle('panic')}
-          icon={AlertCircle}
-          title="Panic mode"
-          description={dueCardsCount > 0 ? `${dueCardsCount} due card${dueCardsCount === 1 ? '' : 's'} ranked by retrievability` : 'No cards due — you\'re caught up'}
-          accent={dueCardsCount > 20}
-          badge={dueCardsCount > 0 ? dueCardsCount : undefined}
-        >
-          <p className="card-note">Drill the lowest-retrievability cards first. Best used the day before an exam.</p>
-          <button className="review-button" onClick={onOpenPanic} disabled={dueCardsCount === 0}>
-            Start a 25-minute drill
-          </button>
-        </StudioCard>
-
-        {/* ── INBOX (was a sub-tab; now a card) ─────────────────── */}
-        <StudioCard
-          id="inbox"
-          open={isOpen('inbox')} onToggle={() => toggle('inbox')}
-          icon={InboxIcon}
-          title="Inbox"
-          description={`${inboxDeadlines.length} deadline${inboxDeadlines.length === 1 ? '' : 's'} this week · ${activeAlerts.length} alert${activeAlerts.length === 1 ? '' : 's'}`}
-          badge={inboxDeadlines.length + activeAlerts.length}
-        >
-          {inboxDeadlines.length === 0 && activeAlerts.length === 0 && (
-            <EmptyHint message="Inbox zero">No deadlines this week, no active alerts.</EmptyHint>
-          )}
-          {inboxDeadlines.length > 0 && (
-            <>
-              <h4 className="card-section-head">Deadlines</h4>
-              <ul className="inbox-list">
-                {inboxDeadlines.map(d => {
-                  const ms = d.deadlineAt - now
-                  const isOverdue = ms < 0
-                  const days = Math.ceil(ms / 86_400_000)
-                  return (
-                    <li key={d.id} className={`inbox-row ${isOverdue ? 'is-overdue' : ''}`}>
-                      <div className="inbox-row-body">
-                        <strong>{d.title}</strong>
-                        <em>{isOverdue ? 'Overdue' : days === 0 ? 'Today' : `${days}d`}</em>
-                      </div>
-                      <button className="inline-action" onClick={() => onCompleteDeadline(d.id)}>Done</button>
-                    </li>
-                  )
-                })}
-              </ul>
-            </>
-          )}
-          {activeAlerts.length > 0 && (
-            <>
-              <h4 className="card-section-head">Alerts</h4>
-              <ul className="inbox-list">
-                {activeAlerts.map(a => (
-                  <li key={a.id} className="inbox-row">
-                    <div className="inbox-row-body">
-                      <strong>{a.title}</strong>
-                      <em>{a.reason}</em>
-                    </div>
-                    <button className="inline-action" onClick={() => onResolveAlert(a.id)}>Resolve</button>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </StudioCard>
-
-        {/* ── HEALTH (demoted from sub-tab) ─────────────────────── */}
-        <StudioCard
-          id="health"
-          open={isOpen('health')} onToggle={() => toggle('health')}
-          icon={Activity}
-          title="Note health"
-          description={`${lintIssues.length} issue${lintIssues.length === 1 ? '' : 's'} across your notes`}
-          badge={lintIssues.length || undefined}
-        >
-          {lintIssues.length === 0 ? (
-            <EmptyHint message="Notes look clean">Empty / orphaned / linkless notes will show up here.</EmptyHint>
-          ) : (
-            <p className="card-note">
-              {lintSummary.warnCount} warning{lintSummary.warnCount === 1 ? '' : 's'} ·{' '}
-              {lintSummary.infoCount} note{lintSummary.infoCount === 1 ? '' : 's'} to review.
-            </p>
-          )}
-        </StudioCard>
-
-        {/* ── DEFERRED · LLM features. Visible-but-disabled so the
-             user knows we're aware of them, not pretending. */}
-        <StudioCard
-          id="audio-overview"
-          open={isOpen('audio-overview')} onToggle={() => toggle('audio-overview')}
-          icon={Headphones}
-          title="Audio overview"
-          description="A short audio briefing of this course"
-        >
-          <p className="card-note muted">
-            Deferred. Generating audio requires an LLM, and we won't ship that until we can guarantee
-            source-grounded refusal-to-invent (NotebookLM's hallucination rate is ~13 %; we want lower
-            before we put words in your speakers). Track the request — vote with usage when it ships.
-          </p>
-        </StudioCard>
-
-        <StudioCard
-          id="mind-map"
-          open={isOpen('mind-map')} onToggle={() => toggle('mind-map')}
-          icon={Network}
-          title="Mind map"
-          description="Concept connections across your notes"
-        >
-          <p className="card-note muted">
-            Deferred for the same reason as Audio overview. The Map tab in the workspace shows a
-            relation graph today, derived from explicit [[note links]] and source quotes — no AI.
-          </p>
-        </StudioCard>
-
-        {/* ── Confusion list — quick affordance, no card chrome ─── */}
-        {unresolvedQuestionCount > 0 && (
-          <StudioCard
-            id="confusions"
-          open={isOpen('confusions')} onToggle={() => toggle('confusions')}
-            icon={Brain}
-            title="Open questions"
-            description={`${unresolvedQuestionCount} unresolved confusion${unresolvedQuestionCount === 1 ? '' : 's'}`}
-            badge={unresolvedQuestionCount}
-          >
-            <ul className="confusion-list">
-              {confusions
-                .filter(c => c.status !== 'resolved' && (!courseId || c.courseId === courseId))
-                .slice(0, 6)
-                .map(c => (
-                  <li key={c.id} className="confusion-row">
-                    <strong>{c.question}</strong>
-                    {c.context && <em>{c.context}</em>}
-                  </li>
-                ))}
-            </ul>
-          </StudioCard>
+        {aiError && (
+          <div className="studio-ai-error">
+            <span>{aiError}</span>
+            <button onClick={() => setAiError(null)}>dismiss</button>
+          </div>
         )}
-      </div>
-    </div>
-  )
-}
 
-function EmptyHint({ message, children }: { message: string; children: React.ReactNode }) {
-  return (
-    <div className="studio-empty">
-      <strong>{message}</strong>
-      <p>{children}</p>
+        {/* ── QUIZ ── */}
+        <StudioCard
+          id="quiz"
+          open={isOpen('quiz')} onToggle={() => toggle('quiz')}
+          icon={HelpCircle}
+          title="Quiz"
+          description={hasActiveNote ? 'Test yourself from the active note' : 'Open a note to enable'}
+          badge={aiQuiz.length || undefined}
+        >
+          <div className="studio-card-actions">
+            <button
+              className="btn-ghost"
+              onClick={onOpenQuizMeBack}
+              disabled={!hasActiveNote}
+              title="Extract questions from headings (no AI needed)"
+            >
+              <Sparkles size={13} /> From headings
+            </button>
+            <button
+              className="btn-primary"
+              onClick={handleGenerateQuiz}
+              disabled={!hasActiveNote || aiLoading === 'quiz'}
+              title="Generate quiz with local AI (requires Ollama)"
+            >
+              {aiLoading === 'quiz' ? <><Loader2 size={13} className="spin" /> Generating...</> : <><HelpCircle size={13} /> AI generate</>}
+            </button>
+          </div>
+          {aiQuiz.length > 0 && (
+            <ul className="ai-quiz-list">
+              {aiQuiz.map((q, i) => (
+                <li key={i} className="ai-quiz-item">
+                  <strong>{i + 1}. {q.question}</strong>
+                  <ul className="ai-quiz-options">
+                    {q.options.map((opt, j) => (
+                      <li key={j} className={j === q.correct ? 'is-correct' : ''}>{String.fromCharCode(65 + j)}. {opt}</li>
+                    ))}
+                  </ul>
+                  <p className="ai-quiz-explanation">{q.explanation}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </StudioCard>
+
+        {/* ── FLASHCARDS ── */}
+        <StudioCard
+          id="flashcards"
+          open={isOpen('flashcards')} onToggle={() => toggle('flashcards')}
+          icon={Layers}
+          title="Flashcards"
+          description={hasActiveNote ? 'Generate cards from your note' : 'Open a note to enable'}
+          badge={aiFlashcards.length || undefined}
+        >
+          <button
+            className="btn-primary"
+            onClick={handleGenerateFlashcards}
+            disabled={!hasActiveNote || aiLoading === 'flashcards'}
+            style={{ width: '100%' }}
+          >
+            {aiLoading === 'flashcards' ? <><Loader2 size={13} className="spin" /> Generating...</> : <><Layers size={13} /> Generate flashcards</>}
+          </button>
+          {aiFlashcards.length > 0 && (
+            <>
+              <ul className="ai-flashcard-list">
+                {aiFlashcards.map((c, i) => (
+                  <li key={i} className="ai-flashcard-item">
+                    <div className="ai-fc-front"><strong>Q:</strong> {c.front}</div>
+                    <div className="ai-fc-back"><strong>A:</strong> {c.back}</div>
+                  </li>
+                ))}
+              </ul>
+              {onSaveFlashcards && (
+                <button className="btn-primary" onClick={() => {
+                  onSaveFlashcards(aiFlashcards)
+                  onStatus?.(`Saved ${aiFlashcards.length} flashcards to your deck`)
+                  setAiFlashcards([])
+                }} style={{ width: '100%' }}>
+                  Save all {aiFlashcards.length} to deck
+                </button>
+              )}
+            </>
+          )}
+        </StudioCard>
+
+        {/* ── AI NOTES ── */}
+        <StudioCard
+          id="ai-notes"
+          open={isOpen('ai-notes')} onToggle={() => toggle('ai-notes')}
+          icon={FileText}
+          title="AI Notes"
+          description={hasActiveNote ? 'Generate, summarize, or merge' : 'Open a note to enable'}
+        >
+          <div className="studio-card-actions" style={{ flexDirection: 'column', gap: 6 }}>
+            <button
+              className="btn-primary"
+              onClick={handleGenerateNotes}
+              disabled={!hasActiveNote || aiLoading === 'ai-notes'}
+              style={{ width: '100%' }}
+            >
+              {aiLoading === 'ai-notes' ? <><Loader2 size={13} className="spin" /> Generating...</> : <><Sparkles size={13} /> Generate study notes</>}
+            </button>
+            <button
+              className="btn-ghost"
+              onClick={handleSummarize}
+              disabled={!hasActiveNote || aiLoading === 'summarize'}
+              style={{ width: '100%' }}
+            >
+              {aiLoading === 'summarize' ? <><Loader2 size={13} className="spin" /> Summarizing...</> : <><FileText size={13} /> Summarize</>}
+            </button>
+            <button
+              className="btn-ghost"
+              onClick={() => setShowMergeSelect(!showMergeSelect)}
+              disabled={courseNotes.length < 2}
+              style={{ width: '100%' }}
+            >
+              <Merge size={13} /> Merge notes
+            </button>
+          </div>
+          {showMergeSelect && (
+            <div className="studio-merge-select">
+              <p className="studio-merge-hint">Select notes to merge:</p>
+              <ul className="studio-merge-list">
+                {courseNotes.slice(0, 15).map(n => (
+                  <li key={n.id}>
+                    <label className="studio-merge-item">
+                      <input
+                        type="checkbox"
+                        checked={mergeSelection.has(n.id)}
+                        onChange={() => setMergeSelection(prev => {
+                          const next = new Set(prev)
+                          if (next.has(n.id)) next.delete(n.id); else next.add(n.id)
+                          return next
+                        })}
+                      />
+                      <span>{n.title || 'Untitled'}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              <button
+                className="btn-primary"
+                onClick={handleMerge}
+                disabled={mergeSelection.size < 2}
+                style={{ width: '100%', marginTop: 6 }}
+              >
+                Merge {mergeSelection.size} notes
+              </button>
+            </div>
+          )}
+        </StudioCard>
+
+        {/* ── RELATED NOTES ── */}
+        {activeNoteId && (() => {
+          const activeNote = notes.find(n => n.id === activeNoteId)
+          if (!activeNote) return null
+          return (
+            <StudioCard
+              id="related"
+              open={isOpen('related')} onToggle={() => toggle('related')}
+              icon={GitBranch}
+              title="Related Notes"
+              description="Notes connected to the active note"
+            >
+              <RelatedNotesList
+                note={activeNote}
+                allNotes={notes}
+                onSelect={onOpenNote}
+              />
+            </StudioCard>
+          )
+        })()}
+
+        {/* ── RESOURCES ── */}
+        <StudioCard
+          id="resources"
+          open={isOpen('resources')} onToggle={() => toggle('resources')}
+          icon={Link2}
+          title="Resources"
+          description={`${resources.length} link${resources.length === 1 ? '' : 's'} saved`}
+          badge={resources.length || undefined}
+        >
+          {resources.length > 0 ? (
+            <ul className="resources-list">
+              {resources.map((r, i) => (
+                <li key={i} className="resource-row">
+                  <a href={r.url} target="_blank" rel="noreferrer" className="resource-link">
+                    <span className="resource-type-tag">{r.type}</span>
+                    <span className="resource-title">{r.title}</span>
+                    <ExternalLink size={11} className="resource-ext-icon" />
+                  </a>
+                  <button className="resource-remove" onClick={() => removeResource(i)} title="Remove">
+                    <X size={12} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="card-note">Save links to articles, YouTube videos, study sites, and other resources for this course.</p>
+          )}
+
+          {showAddResource ? (
+            <div className="resource-add-form">
+              <input
+                type="url"
+                value={newResourceUrl}
+                onChange={e => setNewResourceUrl(e.target.value)}
+                placeholder="https://..."
+                autoFocus
+                className="resource-input"
+              />
+              <input
+                type="text"
+                value={newResourceTitle}
+                onChange={e => setNewResourceTitle(e.target.value)}
+                placeholder="Title (optional)"
+                className="resource-input"
+              />
+              <div className="resource-add-actions">
+                <button className="btn-ghost" onClick={() => { setShowAddResource(false); setNewResourceUrl(''); setNewResourceTitle('') }}>Cancel</button>
+                <button className="btn-primary" onClick={addResource} disabled={!newResourceUrl.trim()}>Add</button>
+              </div>
+            </div>
+          ) : (
+            <button className="btn-ghost" onClick={() => setShowAddResource(true)} style={{ width: '100%', marginTop: 8 }}>
+              <Plus size={13} /> Add resource
+            </button>
+          )}
+        </StudioCard>
+      </div>
     </div>
   )
 }

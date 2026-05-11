@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AcademicDeadline, Assignment, AttentionAlert, Capture, ChecklistItem, ClassSession, ConfusionItem, Course, Note, StudyItem } from '@schema'
+import { Spinner } from './components/Spinner'
+import { EmptyState } from './components/EmptyState'
+import { DashboardView as HomeDashboard } from './components/DashboardView'
 import { Editor } from './Editor'
 import { FileDropZone } from './components/FileDropZone'
 import { DailyJournalView } from './components/DailyJournalView'
@@ -13,6 +16,9 @@ import { CommandPalette } from './components/CommandPalette'
 import { QuizMeBackModal } from './components/QuizMeBackModal'
 import { PanicModeModal } from './components/PanicModeModal'
 import { StudioPanel } from './components/StudioPanel'
+import { NotesListView } from './components/NotesListView'
+import { AddCourseModal } from './components/AddCourseModal'
+import { CaptureInbox } from './components/CaptureInbox'
 import { selectPanicItems } from './lib/panicMode'
 import type { SearchHit } from './lib/searchIndex'
 import { routePaletteHit } from './lib/paletteRouter'
@@ -52,6 +58,7 @@ import {
   Settings,
   Sparkles,
   Target,
+  Layers,
   Upload,
   X,
 } from 'lucide-react'
@@ -125,7 +132,7 @@ interface QuizQuestionDraft {
 // (dashboard / quiz / assignment / syllabus / map / timeline) remain
 // reachable via the "More" overflow menu and direct activeTool calls.
 // Visible-in-tab-strip set is enforced in `tools` below.
-type WorkspaceTool = 'today' | 'daily' | 'deadlines' | 'flashcards' | 'materials' | 'class'
+type WorkspaceTool = 'today' | 'daily' | 'notes' | 'deadlines' | 'flashcards' | 'materials' | 'class'
                    | 'dashboard' | 'quiz' | 'assignment' | 'syllabus' | 'map' | 'timeline'
 type QuickAddKind = 'course' | 'deadline' | 'note' | 'assignment' | 'syllabus' | 'study' | 'question'
 
@@ -226,7 +233,7 @@ function defaultQuickAddForm(kind: QuickAddKind, selectedText = ''): QuickAddFor
   }
 }
 
-const ALL_TOOLS = ['today', 'daily', 'deadlines', 'flashcards', 'materials', 'class', 'dashboard', 'quiz', 'assignment', 'syllabus', 'map', 'timeline'] as const
+const ALL_TOOLS = ['today', 'daily', 'notes', 'deadlines', 'flashcards', 'materials', 'class', 'dashboard', 'quiz', 'assignment', 'syllabus', 'map', 'timeline'] as const
 
 function initialWorkspaceTool(): WorkspaceTool {
   const tool = new URLSearchParams(window.location.search).get('tool')
@@ -273,6 +280,7 @@ export default function App() {
     setRiverIds(prev => prev.filter(id => id !== noteId))
   }, [])
   const [captures, setCaptures] = useState<Capture[]>([])
+  const [unlinkedCaptures, setUnlinkedCaptures] = useState<Capture[]>([])
   const [courses, setCourses] = useState<Course[]>([])
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [deadlines, setDeadlines] = useState<AcademicDeadline[]>([])
@@ -281,11 +289,13 @@ export default function App() {
   const [alerts, setAlerts] = useState<AttentionAlert[]>([])
   const [classSessions, setClassSessions] = useState<ClassSession[]>([])
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null)
+  const [appView, setAppView] = useState<'dashboard' | 'workspace'>('dashboard')
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null)
   const [activeTool, setActiveTool] = useState<WorkspaceTool>(initialWorkspaceTool)
   const [status, setStatus] = useState('')
   const [quickAdd, setQuickAdd] = useState<QuickAddKind | null>(initialQuickAddKind)
   const [quickAddForm, setQuickAddForm] = useState<QuickAddForm>(initialQuickAddKind ? defaultQuickAddForm(initialQuickAddKind) : { title: '', detail: '', code: '', due: '' })
+  const [showAddCourseModal, setShowAddCourseModal] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
   const toggleSection = (key: string) => setExpandedSections(p => ({ ...p, [key]: !p[key] }))
@@ -306,7 +316,7 @@ export default function App() {
     } catch { return fallback }
   }
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(() => readPersistedBool('studydesk:ui:leftOpen', true))
-  const [rightPanelOpen, setRightPanelOpen]   = useState(() => readPersistedBool('studydesk:ui:rightOpen', true))
+  const [rightPanelOpen, setRightPanelOpen]   = useState(() => readPersistedBool('studydesk:ui:rightOpen', false))
   const [rightTab, setRightTab]               = useState<'sources' | 'materials' | 'study' | 'health'>(
     () => readPersistedString('studydesk:ui:rightTab', ['sources', 'materials', 'study', 'health'] as const, 'sources')
   )
@@ -335,10 +345,28 @@ export default function App() {
         e.preventDefault()
         setPaletteOpen(o => !o)
       }
+      // Cmd+Shift+L: link first unlinked capture to active note
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'l') {
+        e.preventDefault()
+        if (selected && unlinkedCaptures.length > 0) {
+          ipc.invoke('capture:linkToNote', { captureIds: [unlinkedCaptures[0].id], noteId: selected.id })
+            .then(() => Promise.all([
+              ipc.invoke<Note[]>('notes:list'),
+              ipc.invoke<Capture[]>('capture:unlinked', { limit: 100 }),
+            ]))
+            .then(([updatedNotes, updatedUnlinked]) => {
+              setNotes(updatedNotes as Note[])
+              setUnlinkedCaptures(updatedUnlinked as Capture[])
+              setSelected((updatedNotes as Note[]).find(n => n.id === selected!.id) ?? selected)
+              setStatus('Capture linked')
+            })
+            .catch(() => {})
+        }
+      }
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [])
+  }, [selected, unlinkedCaptures])
 
   // T4 (anti-shame): late-night mode. Between 22:00 and 05:00 the
   // workspace dials down: muted accents, lower contrast, smaller
@@ -381,6 +409,8 @@ export default function App() {
     setClassSessions(classData)
     setSelectedAssignmentId(prev => prev && assignmentData.some(a => a.id === prev) ? prev : null)
     setSelected(prev => prev ? noteData.find(n => n.id === prev.id) ?? noteData[0] ?? null : noteData[0] ?? null)
+    // Fetch unlinked captures for the CaptureInbox (non-critical, after all state setters)
+    ipc.invoke<Capture[]>('capture:unlinked', { limit: 100 }).then(setUnlinkedCaptures).catch(() => {})
   }
 
   useEffect(() => {
@@ -607,82 +637,99 @@ export default function App() {
     await refresh()
   }
 
+  const autoTagTimer = useRef<number>(0)
   async function handleUpdate(id: string, patch: Partial<Note>) {
     const updated = await ipc.invoke<Note>('notes:update', { id, patch })
     setNotes(prev => prev.map(n => n.id === id ? updated : n))
     setSelected(updated)
+    // Debounced auto-tag: run 3s after the last content change
+    if (patch.content) {
+      window.clearTimeout(autoTagTimer.current)
+      autoTagTimer.current = window.setTimeout(async () => {
+        try {
+          const { tags } = await ipc.invoke<{ tags: string[] }>('notes:autoTag', { noteId: id })
+          if (tags.length > 0) {
+            setNotes(prev => prev.map(n => n.id === id ? { ...n, tags } : n))
+            setSelected(prev => prev && prev.id === id ? { ...prev, tags } : prev)
+          }
+        } catch { /* auto-tag is best-effort */ }
+      }, 3000)
+    }
   }
 
   async function handleDelete(id: string) {
-    await ipc.invoke('notes:delete', { id })
-    const remaining = notes.filter(n => n.id !== id)
-    setNotes(remaining)
-    setSelected(remaining[0] ?? null)
+    try {
+      await ipc.invoke('notes:delete', { id })
+      const remaining = notes.filter(n => n.id !== id)
+      setNotes(remaining)
+      setSelected(remaining[0] ?? null)
+    } catch (e) { console.error('handleDelete failed:', e) }
   }
 
   function handleToolSave(message: string) {
-    return () => { setStatus(message); refresh() }
+    return () => { setStatus(message); refresh().catch(() => {}) }
   }
 
   async function startClass() {
-    const title = selectedCourse ? `${selectedCourse.code ?? selectedCourse.name} class session` : 'Class session'
-    await ipc.invoke('class:start', { courseId: selected?.courseId, title })
-    setStatus('Class mode started. Capture notes and questions as you work.')
-    await refresh()
+    try {
+      const title = selectedCourse ? `${selectedCourse.code ?? selectedCourse.name} class session` : 'Class session'
+      await ipc.invoke('class:start', { courseId: selected?.courseId, title })
+      setStatus('Class mode started. Capture notes and questions as you work.')
+      await refresh()
+    } catch (e) { console.error('startClass failed:', e) }
   }
 
   async function completeDeadline(id: string) {
-    await ipc.invoke('deadline:complete', { id })
-    setStatus('Deadline marked complete.')
-    await refresh()
+    try {
+      await ipc.invoke('deadline:complete', { id })
+      setStatus('Deadline marked complete.')
+      await refresh()
+    } catch (e) { console.error('completeDeadline failed:', e) }
   }
 
   async function reviewStudyItem(id: string, difficulty: NonNullable<StudyItem['difficulty']>) {
-    await ipc.invoke('study:review', { id, difficulty })
-    setStatus(`Study item reviewed: ${difficulty}.`)
-    await refresh()
+    try {
+      await ipc.invoke('study:review', { id, difficulty })
+      setStatus(`Study item reviewed: ${difficulty}.`)
+      await refresh()
+    } catch (e) { console.error('reviewStudyItem failed:', e) }
   }
 
   async function resolveConfusion(id: string) {
-    await ipc.invoke('confusion:resolve', { id })
-    setStatus('Question marked resolved.')
-    await refresh()
+    try {
+      await ipc.invoke('confusion:resolve', { id })
+      setStatus('Question marked resolved.')
+      await refresh()
+    } catch (e) { console.error('resolveConfusion failed:', e) }
   }
 
   async function resolveAlert(id: string) {
-    await ipc.invoke('attentionAlerts:resolve', { id })
-    setStatus('Alert resolved.')
-    await refresh()
+    try {
+      await ipc.invoke('attentionAlerts:resolve', { id })
+      setStatus('Alert resolved.')
+      await refresh()
+    } catch (e) { console.error('resolveAlert failed:', e) }
   }
 
   async function endClassSession(id: string) {
-    await ipc.invoke('class:end', { id })
-    setStatus('Class session ended.')
-    await refresh()
+    try {
+      await ipc.invoke('class:end', { id })
+      setStatus('Class session ended.')
+      await refresh()
+    } catch (e) { console.error('endClassSession failed:', e) }
   }
 
-  // Ticket 1.1 IA — 8 visible tabs (user explicitly asked for Maps +
-  // Quiz back as primary). The remaining 4 demoted tools — Dashboard,
-  // Parser, Syllabus, Timeline — stay in the "More" menu.
-  // Dashboard auto-shows in "All Courses" mode anyway. Parser and
-  // Syllabus are intent-as-action (import flows), better as menu items
-  // than tabs. Timeline is reachable from the Deadlines view toggle.
+  // Primary tabs in the main tab strip.
   const tools: Array<{ id: WorkspaceTool; label: string; icon: React.ReactNode }> = [
     { id: 'today',      label: 'Today',     icon: <PanelTop size={14} /> },
-    { id: 'daily',      label: 'Daily',     icon: <CalendarDays size={14} /> },
+    { id: 'notes',      label: 'Notes',     icon: <FileText size={14} /> },
     { id: 'deadlines',  label: 'Deadlines', icon: <Clock3 size={14} /> },
-    { id: 'flashcards', label: 'Cards',     icon: <ClipboardList size={14} /> },
-    { id: 'quiz',       label: 'Quiz',      icon: <HelpCircle size={14} /> },
-    { id: 'materials',  label: 'Materials', icon: <Folder size={14} /> },
-    { id: 'class',      label: 'Class',     icon: <GraduationCap size={14} /> },
     { id: 'map',        label: 'Map',       icon: <Network size={14} /> },
   ]
-  // Demoted but still routable. Used by the overflow menu.
+  // Overflow menu for less-used tools.
   const demotedTools: Array<{ id: WorkspaceTool; label: string; icon: React.ReactNode; hint?: string }> = [
-    { id: 'dashboard', label: 'Dashboard',         icon: <LayoutDashboard size={14} />, hint: 'Auto-shown when no course selected' },
-    { id: 'assignment',label: 'Assignment parser', icon: <Sparkles size={14} />,        hint: 'Parse a selected note into an assignment + deadline' },
-    { id: 'syllabus',  label: 'Syllabus import',   icon: <FileText size={14} />,        hint: 'Parse a syllabus into deadlines + assignments' },
-    { id: 'timeline',  label: 'Timeline',          icon: <CalendarDays size={14} />,    hint: 'Also reachable as a view toggle in Deadlines' },
+    { id: 'daily',      label: 'Daily Journal', icon: <CalendarDays size={14} />, hint: 'Reflection & journaling' },
+    { id: 'materials',  label: 'Materials',     icon: <Folder size={14} />,       hint: 'Course files & readings' },
   ]
   const [showMoreTools, setShowMoreTools] = useState(false)
   const moreToolsRef = useRef<HTMLDivElement | null>(null)
@@ -716,18 +763,18 @@ export default function App() {
     <div className="space-y-4">
       <div>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Upcoming Deadlines</span>
+          <span className="text-2xs font-bold uppercase tracking-wider text-white/50">Upcoming Deadlines</span>
           <div className="flex items-center gap-2">
             {orderedVisibleDeadlines.length > 0 && (
               <button
                 onClick={exportDeadlines}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-semibold text-white/55 hover:text-blue-200 hover:bg-blue-500/10 transition-colors"
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-semibold text-white/55 hover:text-blue-200 hover:bg-blue-500/10 transition-colors"
                 title="Export to .ics calendar file"
               >
                 <CalendarDays size={9} />Export
               </button>
             )}
-            <span className="text-[10px] text-white/40">{orderedVisibleDeadlines.length}</span>
+            <span className="text-2xs text-white/40">{orderedVisibleDeadlines.length}</span>
           </div>
         </div>
         {orderedVisibleDeadlines.length > 0 ? (
@@ -758,26 +805,26 @@ export default function App() {
                     'w-full text-left px-2.5 py-2 rounded-lg border transition-colors group',
                     !clickable && 'cursor-default',
                     isOverdue
-                      ? clickable ? 'bg-red-500/12 border-red-500/30 hover:bg-red-500/18' : 'bg-red-500/12 border-red-500/30'
+                      ? clickable ? 'bg-[var(--sd-danger-soft)] border-[var(--sd-danger)] hover:bg-[var(--sd-danger-soft)]' : 'bg-[var(--sd-danger-soft)] border-[var(--sd-danger)]'
                       : isToday
-                        ? clickable ? 'bg-amber-500/10 border-amber-500/25 hover:bg-amber-500/15' : 'bg-amber-500/10 border-amber-500/25'
+                        ? clickable ? 'bg-[var(--sd-warn-soft)] border-[var(--sd-warn)] hover:bg-[var(--sd-warn-soft)]' : 'bg-[var(--sd-warn-soft)] border-[var(--sd-warn)]'
                         : clickable ? 'bg-white/[0.03] border-white/[0.06] hover:bg-white/[0.06]' : 'bg-white/[0.03] border-white/[0.06]'
                   )}
                   title={clickable ? 'Open source note' : 'No source note linked'}
                 >
                   <div className="flex items-center gap-2 mb-0.5">
-                    <CalendarDays size={11} className={isOverdue ? 'text-red-300' : isToday ? 'text-amber-200' : 'text-white/55'} />
-                    <span className="flex-1 min-w-0 truncate text-[12px] font-semibold text-white/90">{d.title}</span>
+                    <CalendarDays size={11} className={isOverdue ? 'text-[var(--sd-danger)]' : isToday ? 'text-[var(--sd-warn)]' : 'text-white/55'} />
+                    <span className="flex-1 min-w-0 truncate text-sm font-semibold text-white/90">{d.title}</span>
                     <span className={cn(
-                      'shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tabular-nums',
-                      isOverdue ? 'bg-red-500/22 text-red-200'
-                        : isToday ? 'bg-amber-500/20 text-amber-100'
+                      'shrink-0 px-1.5 py-0.5 rounded text-2xs font-bold uppercase tabular-nums',
+                      isOverdue ? 'bg-[var(--sd-danger-soft)] text-[var(--sd-danger)]'
+                        : isToday ? 'bg-[var(--sd-warn-soft)] text-[var(--sd-warn)]'
                         : 'bg-white/[0.06] text-white/60'
                     )}>{pillLabel}</span>
                   </div>
-                  <div className="text-[10.5px] text-white/45">{formatDue(d.deadlineAt)}</div>
+                  <div className="text-xs text-white/45">{formatDue(d.deadlineAt)}</div>
                   {sourceNote && (
-                    <div className="mt-1 inline-flex items-center gap-1 text-[10px] text-white/45 group-hover:text-blue-300">
+                    <div className="mt-1 inline-flex items-center gap-1 text-2xs text-white/45 group-hover:text-blue-300">
                       <FileText size={9} /> {sourceNote.title.slice(0, 28)}
                     </div>
                   )}
@@ -786,28 +833,28 @@ export default function App() {
             })}
           </div>
         ) : (
-          <div className="text-[11px] text-white/35 italic px-2 py-3">No deadlines yet</div>
+          <div className="text-xs text-white/35 italic px-2 py-3">No deadlines yet</div>
         )}
       </div>
 
       {activeAlerts.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Local Alerts</span>
-            <span className="text-[10px] text-white/40">{activeAlerts.length}</span>
+            <span className="text-2xs font-bold uppercase tracking-wider text-white/50">Local Alerts</span>
+            <span className="text-2xs text-white/40">{activeAlerts.length}</span>
           </div>
           <div className="space-y-1.5">
             {activeAlerts.slice(0, 4).map(alert => (
-              <div key={alert.id} className="px-2.5 py-2 rounded-lg bg-amber-500/8 border border-amber-500/20">
+              <div key={alert.id} className="px-2.5 py-2 rounded-lg bg-[var(--sd-warn-soft)] border border-[var(--sd-warn)]">
                 <div className="flex items-start gap-2">
-                  <Target size={11} className="text-amber-300 mt-0.5" />
+                  <Target size={11} className="text-[var(--sd-warn)] mt-0.5" />
                   <div className="flex-1 min-w-0">
-                    <div className="text-[12px] font-semibold text-white/90 truncate">{alert.title}</div>
-                    <div className="text-[10.5px] text-white/55 mt-0.5">{alert.reason}</div>
+                    <div className="text-sm font-semibold text-white/90 truncate">{alert.title}</div>
+                    <div className="text-xs text-white/55 mt-0.5">{alert.reason}</div>
                     <div className="flex items-center gap-1 mt-1.5">
                       <button
                         onClick={() => resolveAlert(alert.id)}
-                        className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25 transition-colors"
+                        className="px-2 py-0.5 rounded text-2xs font-semibold bg-[var(--sd-success-soft)] text-[var(--sd-success)] hover:bg-[var(--sd-success-soft)] transition-colors"
                       >Resolve</button>
                       {/* Audit fix (P1.1): the attentionAlerts:snooze IPC was
                           declared, handler-implemented, and used by the
@@ -815,18 +862,18 @@ export default function App() {
                           button. Added with two presets (1h, 1 day) so the
                           common cases don't need a date picker. */}
                       <button
-                        onClick={() => ipc.invoke('attentionAlerts:snooze', { id: alert.id, snoozedUntil: Date.now() + 60 * 60 * 1000 }).then(refresh)}
-                        className="px-2 py-0.5 rounded text-[10px] font-semibold text-white/55 hover:text-white/85 hover:bg-white/[0.06] transition-colors"
+                        onClick={() => ipc.invoke('attentionAlerts:snooze', { id: alert.id, snoozedUntil: Date.now() + 60 * 60 * 1000 }).then(refresh).catch(() => {})}
+                        className="px-2 py-0.5 rounded text-2xs font-semibold text-white/55 hover:text-white/85 hover:bg-white/[0.06] transition-colors"
                         title="Snooze for 1 hour"
                       >Snooze 1h</button>
                       <button
-                        onClick={() => ipc.invoke('attentionAlerts:snooze', { id: alert.id, snoozedUntil: Date.now() + 24 * 60 * 60 * 1000 }).then(refresh)}
-                        className="px-2 py-0.5 rounded text-[10px] font-semibold text-white/55 hover:text-white/85 hover:bg-white/[0.06] transition-colors"
+                        onClick={() => ipc.invoke('attentionAlerts:snooze', { id: alert.id, snoozedUntil: Date.now() + 24 * 60 * 60 * 1000 }).then(refresh).catch(() => {})}
+                        className="px-2 py-0.5 rounded text-2xs font-semibold text-white/55 hover:text-white/85 hover:bg-white/[0.06] transition-colors"
                         title="Snooze until tomorrow"
                       >Tomorrow</button>
                       <button
-                        onClick={() => ipc.invoke('attentionAlerts:dismiss', { id: alert.id }).then(refresh)}
-                        className="px-2 py-0.5 rounded text-[10px] font-semibold text-white/55 hover:text-white/85 hover:bg-white/[0.06] transition-colors"
+                        onClick={() => ipc.invoke('attentionAlerts:dismiss', { id: alert.id }).then(refresh).catch(() => {})}
+                        className="px-2 py-0.5 rounded text-2xs font-semibold text-white/55 hover:text-white/85 hover:bg-white/[0.06] transition-colors"
                       >Dismiss</button>
                     </div>
                   </div>
@@ -874,7 +921,7 @@ export default function App() {
           />
           {(selectedCourse.materialsImportedFiles ?? []).filter(r => r.noteId).length > 0 && (
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-white/50 mb-2">Imported files</div>
+              <div className="text-2xs font-bold uppercase tracking-wider text-white/50 mb-2">Imported files</div>
               <div className="space-y-1">
                 {(selectedCourse.materialsImportedFiles ?? []).filter(r => r.noteId).slice(0, 20).map(r => {
                   const note = notes.find(n => n.id === r.noteId)
@@ -890,13 +937,13 @@ export default function App() {
                       title={usageCount > 0 ? `Cited in ${usageCount} note${usageCount === 1 ? '' : 's'}` : 'No citations yet'}
                     >
                       <FileText size={11} className="text-white/45 shrink-0" />
-                      <span className="flex-1 min-w-0 truncate text-[11.5px] text-white/80">{fname}</span>
+                      <span className="flex-1 min-w-0 truncate text-sm text-white/80">{fname}</span>
                       {usageCount > 0 && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-white/[0.08] text-white/70 shrink-0 tabular-nums">
+                        <span className="text-2xs px-1.5 py-0.5 rounded-full bg-white/[0.08] text-white/70 shrink-0 tabular-nums">
                           {usageCount}×
                         </span>
                       )}
-                      <span className="text-[9px] text-white/35 shrink-0">{new Date(r.importedAt).toLocaleDateString()}</span>
+                      <span className="text-2xs text-white/35 shrink-0">{new Date(r.importedAt).toLocaleDateString()}</span>
                     </button>
                   )
                 })}
@@ -907,18 +954,18 @@ export default function App() {
           <div className="pt-3 border-t border-white/[0.06]">
             <button
               onClick={publishStaticSite}
-              className="w-full px-3 py-2 rounded-md bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-[11.5px] text-white/80 hover:text-white transition-colors"
+              className="w-full px-3 py-2 rounded-md bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-sm text-white/80 hover:text-white transition-colors"
               title="Generate a browsable static HTML site from this course's notes"
             >
               Publish as static site…
             </button>
-            <p className="text-[10px] text-white/35 mt-1 leading-snug">
+            <p className="text-2xs text-white/35 mt-1 leading-snug">
               Renders this course's notes as a folder of HTML pages with built-in search.
             </p>
           </div>
         </>
       ) : (
-        <div className="text-[11px] text-white/40 italic px-2 py-3">
+        <div className="text-xs text-white/40 italic px-2 py-3">
           Pick a course in the rail to manage its materials folder.
         </div>
       )}
@@ -929,15 +976,15 @@ export default function App() {
     <div className="space-y-4">
       <div>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Study Queue</span>
-          <span className="text-[10px] text-white/40">{dueStudyItems.length}</span>
+          <span className="text-2xs font-bold uppercase tracking-wider text-white/50">Study Queue</span>
+          <span className="text-2xs text-white/40">{dueStudyItems.length}</span>
         </div>
         {dueStudyItems.length > 0 ? (
           <div className="space-y-1.5">
             {dueStudyItems.slice(0, 6).map(item => (
               <div key={item.id} className="px-2.5 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06]">
-                <div className="text-[12px] font-semibold text-white/90 truncate">{item.front}</div>
-                <div className="text-[10px] text-white/45 mt-0.5 capitalize">{item.type}</div>
+                <div className="text-sm font-semibold text-white/90 truncate">{item.front}</div>
+                <div className="text-2xs text-white/45 mt-0.5 capitalize">{item.type}</div>
                 {/* Audit fix (P0.1): Study sub-tab was readonly. Add the
                     same difficulty buttons the Cards tab uses so a user
                     can actually grade items from the right rail without
@@ -947,7 +994,7 @@ export default function App() {
                     <button
                       key={d}
                       onClick={() => reviewStudyItem(item.id, d)}
-                      className="flex-1 px-1.5 py-1 rounded text-[10px] font-semibold uppercase tracking-wider bg-white/[0.04] hover:bg-white/[0.10] text-white/70 hover:text-white transition-colors"
+                      className="flex-1 px-1.5 py-1 rounded text-2xs font-semibold uppercase tracking-wider bg-white/[0.04] hover:bg-white/[0.10] text-white/70 hover:text-white transition-colors"
                       title={`Mark as ${d}`}
                     >{d}</button>
                   ))}
@@ -956,29 +1003,29 @@ export default function App() {
             ))}
           </div>
         ) : (
-          <div className="text-[11px] text-white/35 italic px-2 py-3">No items due</div>
+          <div className="text-xs text-white/35 italic px-2 py-3">No items due</div>
         )}
       </div>
       <div>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Unresolved Questions</span>
-          <span className="text-[10px] text-white/40">{unresolvedConfusions.length}</span>
+          <span className="text-2xs font-bold uppercase tracking-wider text-white/50">Unresolved Questions</span>
+          <span className="text-2xs text-white/40">{unresolvedConfusions.length}</span>
         </div>
         {unresolvedConfusions.length > 0 ? (
           <div className="space-y-1">
             {unresolvedConfusions.slice(0, 5).map(q => (
               <div key={q.id} className="px-2.5 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06]">
-                <div className="text-[11.5px] text-white/85 leading-snug">{q.question}</div>
+                <div className="text-sm text-white/85 leading-snug">{q.question}</div>
                 <div className="flex items-center justify-between mt-1.5 gap-2">
                   {q.nextStep && (
-                    <div className="text-[10px] text-blue-300 capitalize flex-1 min-w-0 truncate">→ {q.nextStep.replace(/_/g, ' ')}</div>
+                    <div className="text-2xs text-blue-300 capitalize flex-1 min-w-0 truncate">→ {q.nextStep.replace(/_/g, ' ')}</div>
                   )}
                   {/* Audit fix (P0.1): the Resolve action existed as IPC
                       (confusion:resolve) and as a handler (resolveConfusion)
                       but no button surfaced it from the right panel. */}
                   <button
                     onClick={() => resolveConfusion(q.id)}
-                    className="shrink-0 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 hover:text-emerald-100 transition-colors"
+                    className="shrink-0 px-2 py-0.5 rounded text-2xs font-semibold bg-[var(--sd-success-soft)] hover:bg-[var(--sd-success-soft)] text-[var(--sd-success)] hover:text-[var(--sd-success)] transition-colors"
                     title="Mark question as resolved"
                   >Resolve</button>
                 </div>
@@ -986,7 +1033,7 @@ export default function App() {
             ))}
           </div>
         ) : (
-          <div className="text-[11px] text-white/35 italic px-2 py-3">No unresolved questions</div>
+          <div className="text-xs text-white/35 italic px-2 py-3">No unresolved questions</div>
         )}
       </div>
     </div>
@@ -998,18 +1045,18 @@ export default function App() {
   const healthContent = (
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Note Health</span>
-        <span className="text-[10px] text-white/40">{lintIssues.length} issue{lintIssues.length === 1 ? '' : 's'}</span>
+        <span className="text-2xs font-bold uppercase tracking-wider text-white/50">Note Health</span>
+        <span className="text-2xs text-white/40">{lintIssues.length} issue{lintIssues.length === 1 ? '' : 's'}</span>
       </div>
       {lintIssues.length === 0 ? (
         <div className="text-center py-8 px-3">
-          <div className="text-[12px] text-white/55">All clear</div>
-          <div className="text-[10.5px] text-white/35 mt-1">No orphan links, missing parents, or stale notes.</div>
+          <div className="text-sm text-white/55">All clear</div>
+          <div className="text-xs text-white/35 mt-1">No orphan links, missing parents, or stale notes.</div>
         </div>
       ) : (
         <>
           {lintSummary.warnCount > 0 && (
-            <div className="text-[10.5px] text-amber-300 mb-2">
+            <div className="text-xs text-[var(--sd-warn)] mb-2">
               {lintSummary.warnCount} warning{lintSummary.warnCount === 1 ? '' : 's'} · {lintSummary.infoCount} info
             </div>
           )}
@@ -1025,20 +1072,20 @@ export default function App() {
               >
                 <div className="flex items-center gap-2 mb-1">
                   <span className={
-                    'text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ' +
+                    'text-2xs font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ' +
                     (issue.severity === 'warn'
-                      ? 'bg-amber-500/15 text-amber-300 border border-amber-500/25'
+                      ? 'bg-[var(--sd-warn-soft)] text-[var(--sd-warn)] border border-[var(--sd-warn)]'
                       : 'bg-white/[0.06] text-white/55 border border-white/[0.08]')
                   }>
                     {issue.kind.replace(/_/g, ' ')}
                   </span>
                 </div>
-                <div className="text-[12px] font-semibold text-white/90 truncate">{issue.noteTitle}</div>
-                <div className="text-[10.5px] text-white/55 mt-0.5">{issue.message}</div>
+                <div className="text-sm font-semibold text-white/90 truncate">{issue.noteTitle}</div>
+                <div className="text-xs text-white/55 mt-0.5">{issue.message}</div>
               </button>
             ))}
             {lintIssues.length > 30 && (
-              <div className="text-[10.5px] text-white/40 italic px-2 py-1">
+              <div className="text-xs text-white/40 italic px-2 py-1">
                 +{lintIssues.length - 30} more issues
               </div>
             )}
@@ -1047,6 +1094,46 @@ export default function App() {
       )}
     </div>
   )
+
+  // ── Dashboard / Workspace view switch ──────────────────────────────────────
+  const enterCourse = (courseId: string) => {
+    setSelectedCourseId(courseId)
+    setAppView('workspace')
+    const firstNote = notes.find(n => n.courseId === courseId)
+    if (firstNote) setSelected(firstNote)
+  }
+
+  if (appView === 'dashboard') {
+    return (
+      <>
+        <HomeDashboard
+          courses={courses}
+          deadlines={deadlines}
+          alerts={alerts}
+          assignments={assignments}
+          studyItems={studyItems}
+          onEnterCourse={enterCourse}
+          onAddCourse={() => setShowAddCourseModal(true)}
+        />
+        {quickAdd && (
+          <QuickAddSheet
+            kind={quickAdd}
+            form={quickAddForm}
+            onChange={setQuickAddForm}
+            onClose={() => setQuickAdd(null)}
+            onSubmit={submitQuickAdd}
+          />
+        )}
+        {showAddCourseModal && (
+          <AddCourseModal
+            onClose={() => setShowAddCourseModal(false)}
+            onCourseCreated={() => { refresh(); setShowAddCourseModal(false) }}
+            onStatus={setStatus}
+          />
+        )}
+      </>
+    )
+  }
 
   return (
     <ShellContainer>
@@ -1061,7 +1148,8 @@ export default function App() {
             if (firstNote) setSelected(firstNote)
           }
         }}
-        onAddCourse={() => openQuickAdd('course')}
+        onAddCourse={() => setShowAddCourseModal(true)}
+        onBackToDashboard={() => setAppView('dashboard')}
       />
 
       {/* Left Sidebar — sources/notes (SurfSense Sidebar).
@@ -1079,71 +1167,105 @@ export default function App() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
       >
-        <ShellSidebarSection title="Syllabus Imports" icon={FileText} count={syllabusNotes.length} onAdd={() => openQuickAdd('syllabus')}>
-          {syllabusNotes.length > 0 ? syllabusNotes.map(note => {
-            const importedCount = deadlines.filter(d => d.sourceId === note.id).length
-              + assignments.filter(a => a.sourceId === note.id).length
+        {/* ── Course-specific sidebar: deadlines, reminders, announcements, updates ── */}
+        <ShellSidebarSection title="Upcoming Deadlines" icon={CalendarDays} count={orderedVisibleDeadlines.length} defaultOpen={orderedVisibleDeadlines.length > 0}>
+          {orderedVisibleDeadlines.length > 0 ? orderedVisibleDeadlines.slice(0, 8).map(d => {
+            const daysLeft = Math.ceil((d.deadlineAt - Date.now()) / 86_400_000)
+            const urgency = daysLeft <= 1 ? 'critical' : daysLeft <= 3 ? 'warning' : undefined
             return (
               <SidebarRow
-                key={note.id}
-                title={note.title}
-                meta={new Date(note.updatedAt).toLocaleDateString()}
-                icon={<FileText size={13} />}
-                // Audit fix (P2.3): badge counts parsed deadlines + assignments
-                // from the syllabus, NOT raw imported files. Old "imported"
-                // label was ambiguous vs the materials folder counter.
-                badge={importedCount > 0 ? { label: `${importedCount} parsed`, tone: 'imported' } : undefined}
-                active={selected?.id === note.id}
-                onClick={() => setSelected(note)}
+                key={d.id}
+                title={d.title}
+                meta={daysLeft <= 0 ? 'Overdue' : daysLeft === 1 ? 'Due tomorrow' : `${daysLeft} days left`}
+                icon={<CalendarDays size={13} />}
+                badge={urgency === 'critical' ? { label: 'urgent', tone: 'critical' } : urgency === 'warning' ? { label: 'soon', tone: 'warning' } : undefined}
               />
             )
-          }) : <div className="px-2 py-2 text-[10.5px] text-white/35 italic">No syllabus imports</div>}
+          }) : <div className="px-2 py-2 text-2xs text-white/35 italic">No upcoming deadlines</div>}
         </ShellSidebarSection>
 
-        <ShellSidebarSection title="Assignment Prompts" icon={ClipboardList} count={assignmentNotes.length} onAdd={() => openQuickAdd('assignment')}>
-          {assignmentNotes.length > 0 ? assignmentNotes.map(note => {
-            const linked = assignments.find(a => a.sourceId === note.id || a.id === note.linkedAssignmentId)
-            return (
-              <SidebarRow
-                key={note.id}
-                title={note.title || 'Untitled'}
-                meta={new Date(note.updatedAt).toLocaleDateString()}
-                icon={<ClipboardList size={13} />}
-                badge={linked ? { label: 'parsed', tone: 'parsed' } : undefined}
-                active={selected?.id === note.id}
-                onClick={() => setSelected(note)}
-              />
-            )
-          }) : <div className="px-2 py-2 text-[10.5px] text-white/35 italic">No assignment prompts</div>}
-        </ShellSidebarSection>
-
-        <ShellSidebarSection title="Notes" icon={FileText} count={classNotes.length} onAdd={() => openQuickAdd('note')}>
-          {classNotes.length > 0 ? classNotes.map(note => {
-            const cardCount = studyItems.filter(s => s.sourceNoteId === note.id).length
-            return (
-              <SidebarRow
-                key={note.id}
-                title={note.title || 'Untitled'}
-                meta={new Date(note.updatedAt).toLocaleDateString()}
-                icon={<FileText size={13} />}
-                badge={cardCount > 0 ? { label: `${cardCount} card${cardCount === 1 ? '' : 's'}`, tone: 'parsed' } : undefined}
-                active={selected?.id === note.id}
-                onClick={() => setSelected(note)}
-              />
-            )
-          }) : <div className="px-2 py-2 text-[10.5px] text-white/35 italic">No notes</div>}
-        </ShellSidebarSection>
-
-        <ShellSidebarSection title="Captures" icon={Image} count={visibleCaptures.length} defaultOpen={false}>
-          {visibleCaptures.length > 0 ? visibleCaptures.slice(0, 30).map(cap => (
+        <ShellSidebarSection title="Reminders" icon={Bell} count={activeAlerts.length + visibleClassSessions.length} defaultOpen={false}>
+          {activeAlerts.length > 0 ? activeAlerts.slice(0, 6).map(alert => (
             <SidebarRow
-              key={cap.id}
-              title={cap.text.slice(0, 40)}
-              meta={new Date(cap.createdAt).toLocaleDateString()}
-              icon={<Image size={13} />}
+              key={alert.id}
+              title={alert.title}
+              meta={alert.reason}
+              icon={<Bell size={13} />}
+              badge={alert.priority === 'critical' ? { label: 'critical', tone: 'critical' } : alert.priority === 'high' ? { label: 'high', tone: 'warning' } : undefined}
             />
-          )) : <div className="px-2 py-2 text-[10.5px] text-white/35 italic">No captures</div>}
+          )) : null}
+          {visibleClassSessions.length > 0 ? visibleClassSessions.slice(0, 4).map(session => (
+            <SidebarRow
+              key={session.id}
+              title={session.title}
+              meta={new Date(session.startedAt).toLocaleDateString()}
+              icon={<Sparkles size={13} />}
+              badge={session.examHints.length > 0 ? { label: 'exam hint', tone: 'warning' } : undefined}
+            />
+          )) : null}
+          {activeAlerts.length === 0 && visibleClassSessions.length === 0 && (
+            <div className="px-2 py-2 text-2xs text-white/35 italic">No reminders</div>
+          )}
         </ShellSidebarSection>
+
+        <ShellSidebarSection title="Assignments" icon={ClipboardList} count={visibleAssignments.filter(a => a.status !== 'archived' && a.status !== 'submitted').length} defaultOpen={visibleAssignments.filter(a => a.status !== 'archived' && a.status !== 'submitted').length > 0}>
+          {visibleAssignments.filter(a => a.status !== 'archived' && a.status !== 'submitted').length > 0
+            ? visibleAssignments.filter(a => a.status !== 'archived' && a.status !== 'submitted').slice(0, 6).map(a => (
+              <SidebarRow
+                key={a.id}
+                title={a.title}
+                meta={a.dueDate ? `Due ${new Date(a.dueDate).toLocaleDateString()}` : a.status}
+                icon={<ClipboardList size={13} />}
+                badge={a.status === 'in_progress' ? { label: 'active', tone: 'parsed' } : undefined}
+              />
+            ))
+            : <div className="px-2 py-2 text-2xs text-white/35 italic">No active assignments</div>}
+        </ShellSidebarSection>
+
+        {/* ── Capture Inbox: only shown when there are unlinked captures ── */}
+        {unlinkedCaptures.length > 0 && <CaptureInbox
+          captures={unlinkedCaptures.slice(0, 10)}
+          activeNoteId={selected?.id}
+          onLink={async (captureIds, noteId) => {
+            await ipc.invoke('capture:linkToNote', { captureIds, noteId })
+            // Refresh both notes (content changed) and unlinked captures
+            const [updatedNotes, updatedUnlinked] = await Promise.all([
+              ipc.invoke<Note[]>('notes:list'),
+              ipc.invoke<Capture[]>('capture:unlinked', { limit: 100 }),
+            ])
+            setNotes(updatedNotes)
+            setUnlinkedCaptures(updatedUnlinked)
+            setSelected(updatedNotes.find(n => n.id === noteId) ?? selected)
+          }}
+          onCreateNote={async (captureIds) => {
+            // Create a new note from selected captures
+            const captureTexts = captureIds
+              .map(id => unlinkedCaptures.find(c => c.id === id)?.text)
+              .filter(Boolean) as string[]
+            const content = JSON.stringify({
+              type: 'doc',
+              content: captureTexts.map(text => ({
+                type: 'sourceQuote',
+                attrs: { captureId: captureIds[captureTexts.indexOf(text)], source: 'capture' },
+                content: [{ type: 'text', text }],
+              })),
+            })
+            const note = await ipc.invoke<Note>('notes:create', {
+              title: `Captures — ${new Date().toLocaleDateString()}`,
+              content,
+            })
+            // Link the captures to the new note
+            await ipc.invoke('capture:linkToNote', { captureIds, noteId: note.id })
+            const [updatedNotes, updatedUnlinked] = await Promise.all([
+              ipc.invoke<Note[]>('notes:list'),
+              ipc.invoke<Capture[]>('capture:unlinked', { limit: 100 }),
+            ])
+            setNotes(updatedNotes)
+            setUnlinkedCaptures(updatedUnlinked)
+            setSelected(updatedNotes.find(n => n.id === note.id) ?? null)
+            setActiveTool('today')
+          }}
+        />}
       </LeftSidebar>
       ) : (
         // Collapsed-state pill — small "Show sidebar" affordance so users
@@ -1169,16 +1291,15 @@ export default function App() {
             {/* Audit fix (P0.2): Bell + Settings gear were decorative no-ops
                 with a hardcoded red-dot. Removed. */}
 
-            {/* Ticket 1.1 — More-tools overflow menu. Surfaces the demoted
-                workspace tools (Dashboard, Quiz, Parser, Syllabus, Map,
-                Timeline) so they remain reachable after the IA collapse. */}
+            {/* More-tools overflow menu — only rendered when demotedTools is non-empty. */}
+            {demotedTools.length > 0 && (
             <div className="relative" ref={moreToolsRef}>
               <button
                 onClick={() => setShowMoreTools(v => !v)}
                 aria-haspopup="menu"
                 aria-expanded={showMoreTools}
                 className={cn(
-                  'h-7 px-2 rounded-md flex items-center gap-1 text-[11px] font-medium whitespace-nowrap transition-colors',
+                  'h-7 px-2 rounded-md flex items-center gap-1 text-xs font-medium whitespace-nowrap transition-colors',
                   showMoreTools
                     ? 'bg-white/[0.08] text-white'
                     : 'text-white/55 hover:text-white/90 hover:bg-white/[0.04]'
@@ -1188,13 +1309,13 @@ export default function App() {
                 <MoreHorizontal size={14} /> More
               </button>
               {showMoreTools && (
-                <div role="menu" className="absolute right-0 top-[calc(100%+4px)] min-w-[220px] p-1 rounded-lg bg-[#0c0c14] border border-white/[0.10] shadow-2xl z-50">
+                <div role="menu" className="absolute right-0 top-[calc(100%+4px)] min-w-[220px] p-1 rounded-lg bg-[var(--sd-ink-0)] border border-white/[0.10] shadow-2xl z-50">
                   {demotedTools.map(t => (
                     <button
                       key={t.id}
                       role="menuitem"
                       onClick={() => { setActiveTool(t.id); setShowMoreTools(false) }}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-[12px] text-white/85 hover:bg-white/[0.06] text-left"
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-white/85 hover:bg-white/[0.06] text-left"
                       title={t.hint}
                     >
                       <span className="shrink-0 text-white/55">{t.icon}</span>
@@ -1204,12 +1325,13 @@ export default function App() {
                 </div>
               )}
             </div>
+            )}
             {!rightPanelOpen && (
               <button
                 onClick={() => setRightPanelOpen(true)}
-                className="ml-1 px-2.5 h-8 rounded-md flex items-center gap-1.5 text-[11.5px] font-semibold text-white/70 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-colors"
+                className="ml-1 px-2.5 h-8 rounded-md flex items-center gap-1.5 text-sm font-semibold text-white/70 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-colors"
               >
-                <PanelTop size={12} className="rotate-90" /> Inbox
+                <PanelTop size={12} className="rotate-90" /> Studio
               </button>
             )}
           </>
@@ -1256,32 +1378,36 @@ export default function App() {
       </MainPanel>
 
       {/* Right Panel — Studio. NotebookLM affordance: vertical stack of
-          generation cards (Brief, Study Guide, Quiz me, Panic mode,
-          Inbox, Health). Replaces the previous Documents sub-tab strip
-          per user redesign request. */}
+          generation cards (Brief, Study Guide, Quiz me, Open questions).
+          Replaces the previous Documents sub-tab strip per user redesign
+          request. */}
       {rightPanelOpen ? (
         <aside className="hidden md:flex w-[320px] shrink-0 rounded-xl border border-white/[0.06] overflow-hidden" style={{ background: 'var(--sd-ink-1)' }}>
           <StudioPanel
             notes={notes}
-            deadlines={visibleDeadlines}
-            alerts={alerts}
-            studyItems={visibleStudyItems}
             confusions={unresolvedConfusions}
-            lintIssues={lintIssues}
             courseId={currentCourse?.id}
-            // Quiz-me-back state lives in DocumentWorkspace (it depends
-            // on the workspace's `selected` note + extractCardCandidates
-            // result). Bridge with a DOM event so the Studio button can
-            // trigger it without lifting state across the tree.
-            // DocumentWorkspace listens for 'studydesk:quiz-me-back-open'.
-            // (Review C3: panic-mode bridge dropped; setPanicOpen is
-            // now a direct prop because that state lives at App level.)
             onOpenQuizMeBack={() => window.dispatchEvent(new CustomEvent('studydesk:quiz-me-back-open'))}
-            onOpenPanic={() => setPanicOpen(true)}
             hasActiveNote={!!selected}
+            activeNoteId={selected?.id}
+            activeNoteContent={selected?.content}
             onOpenNote={(n) => setSelected(n)}
-            onResolveAlert={(id) => resolveAlert(id)}
-            onCompleteDeadline={(id) => completeDeadline(id)}
+            onCreateNote={async (title, content) => {
+              const note = await ipc.invoke<Note>('notes:create', {
+                title,
+                content,
+              })
+              await refresh()
+              setSelected(notes.find(n => n.id === note.id) ?? note)
+              setActiveTool('today')
+            }}
+            onSaveFlashcards={async (cards) => {
+              for (const c of cards) {
+                await ipc.invoke('study:create', { front: c.front, back: c.back, courseId: currentCourse?.id })
+              }
+              refresh()
+            }}
+            onStatus={setStatus}
           />
         </aside>
       ) : (
@@ -1332,9 +1458,18 @@ export default function App() {
         }}
       />
 
+      {/* Add Course Modal (workspace context) */}
+      {showAddCourseModal && (
+        <AddCourseModal
+          onClose={() => setShowAddCourseModal(false)}
+          onCourseCreated={() => { refresh(); setShowAddCourseModal(false) }}
+          onStatus={setStatus}
+        />
+      )}
+
       {/* Status banner overlay */}
       {status && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-blue-500/15 border border-blue-500/30 backdrop-blur-md flex items-center gap-3 text-[12px] text-blue-100 shadow-lg">
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-blue-500/15 border border-blue-500/30 backdrop-blur-md flex items-center gap-3 text-sm text-blue-100 shadow-lg">
           {status}
           <button
             onClick={() => setStatus('')}
@@ -1439,6 +1574,8 @@ function WorkspaceSurface({
   switch (activeTool) {
     case 'dashboard':
       return <DashboardView courses={courses} deadlines={deadlines} studyItems={studyItems} alerts={alerts} onCompleteDeadline={onCompleteDeadline} onResolveAlert={onResolveAlert} onNavigate={onNavigate} />
+    case 'notes':
+      return <NotesListView notes={notes} currentCourse={currentCourse} onSelect={(n) => { onSelect(n); onNavigate('today') }} onCreate={onCreate} />
     case 'daily':
       return <DailyJournalView notes={notes} currentCourse={currentCourse} onUpdate={onUpdate} onRefresh={onRefresh} onSelect={onSelect} />
     case 'deadlines':
@@ -1514,7 +1651,7 @@ function DeadlinesView({
       {view === 'timeline' ? (
         <TimelineView notes={notes} deadlines={deadlines} captures={captures} studyItems={studyItems} courses={courses} courseId={courseId} onSelectNote={onSelectNote} />
       ) : filtered.length === 0 ? (
-        <div className="px-6 py-8 text-center text-white/45 text-[13px]">No deadlines for this course.</div>
+        <EmptyState icon={CalendarDays} title="No deadlines" description="No deadlines for this course yet. Import a syllabus or add them manually." />
       ) : (
         <div className="px-4 pb-4 space-y-1.5">
           {filtered.map(d => {
@@ -1530,33 +1667,33 @@ function DeadlinesView({
                 className={cn(
                   'px-3 py-2.5 rounded-lg border flex items-center gap-3',
                   d.completed
-                    ? 'bg-emerald-500/8 border-emerald-500/20 opacity-70'
-                    : isOverdue ? 'bg-red-500/12 border-red-500/30'
-                    : isToday   ? 'bg-amber-500/10 border-amber-500/25'
+                    ? 'bg-[var(--sd-success-soft)] border-[var(--sd-success)] opacity-70'
+                    : isOverdue ? 'bg-[var(--sd-danger-soft)] border-[var(--sd-danger)]'
+                    : isToday   ? 'bg-[var(--sd-warn-soft)] border-[var(--sd-warn)]'
                     : 'bg-white/[0.03] border-white/[0.06]'
                 )}
               >
-                <CalendarDays size={13} className={d.completed ? 'text-emerald-300' : isOverdue ? 'text-red-300' : isToday ? 'text-amber-200' : 'text-white/55'} />
+                <CalendarDays size={13} className={d.completed ? 'text-[var(--sd-success)]' : isOverdue ? 'text-[var(--sd-danger)]' : isToday ? 'text-[var(--sd-warn)]' : 'text-white/55'} />
                 <button
                   onClick={sourceNote ? () => onSelectNote(sourceNote) : undefined}
                   disabled={!sourceNote}
                   className={cn('flex-1 min-w-0 text-left', !sourceNote && 'cursor-default')}
                   title={sourceNote ? 'Open source note' : undefined}
                 >
-                  <div className="text-[13px] font-semibold text-white/95 truncate">{d.title}</div>
-                  <div className="text-[11px] text-white/55">{formatDue(d.deadlineAt)}{d.type ? ` · ${d.type}` : ''}</div>
+                  <div className="text-md font-semibold text-white/95 truncate">{d.title}</div>
+                  <div className="text-xs text-white/55">{formatDue(d.deadlineAt)}{d.type ? ` · ${d.type}` : ''}</div>
                 </button>
                 <span className={cn(
-                  'shrink-0 px-2 py-0.5 rounded text-[10px] font-bold uppercase tabular-nums',
-                  d.completed ? 'bg-emerald-500/20 text-emerald-200'
-                    : isOverdue ? 'bg-red-500/22 text-red-200'
-                    : isToday ? 'bg-amber-500/20 text-amber-100'
+                  'shrink-0 px-2 py-0.5 rounded text-2xs font-bold uppercase tabular-nums',
+                  d.completed ? 'bg-[var(--sd-success-soft)] text-[var(--sd-success)]'
+                    : isOverdue ? 'bg-[var(--sd-danger-soft)] text-[var(--sd-danger)]'
+                    : isToday ? 'bg-[var(--sd-warn-soft)] text-[var(--sd-warn)]'
                     : 'bg-white/[0.06] text-white/60'
                 )}>{pillLabel}</span>
                 {!d.completed && (
                   <button
                     onClick={() => onCompleteDeadline(d.id)}
-                    className="shrink-0 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25 transition-colors"
+                    className="shrink-0 px-2 py-0.5 rounded text-2xs font-semibold bg-[var(--sd-success-soft)] text-[var(--sd-success)] hover:bg-[var(--sd-success-soft)] transition-colors"
                   >Complete</button>
                 )}
               </div>
@@ -1582,6 +1719,7 @@ function MaterialsView({
   onRefresh: () => void
   onStatus: (msg: string) => void
 }) {
+  const [pickingFolder, setPickingFolder] = useState(false)
   if (!selectedCourse) {
     return (
       <section className="phase3-card">
@@ -1607,7 +1745,9 @@ function MaterialsView({
         <div className="phase3-actions">
           <button
             className="outline-button"
+            disabled={pickingFolder}
             onClick={async () => {
+              setPickingFolder(true)
               try {
                 await ipc.invoke('course:pickMaterialsFolder', { courseId: selectedCourse.id })
                 onRefresh()
@@ -1615,9 +1755,11 @@ function MaterialsView({
               } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err)
                 onStatus(`Could not link folder: ${msg}`)
+              } finally {
+                setPickingFolder(false)
               }
             }}
-          ><Folder size={15} /> Pick folder</button>
+          >{pickingFolder ? <Spinner size={15} /> : <Folder size={15} />} Pick folder</button>
           <button
             className="review-button"
             onClick={async () => {
@@ -1634,7 +1776,7 @@ function MaterialsView({
         </div>
       </header>
       {imported.length === 0 ? (
-        <div className="px-6 py-8 text-center text-white/45 text-[13px]">
+        <div className="px-6 py-8 text-center text-white/45 text-md">
           Drop a folder of PDFs / Markdown files into this course and StudyDesk will keep it in sync as you edit.
         </div>
       ) : (
@@ -1654,13 +1796,13 @@ function MaterialsView({
                 )}
               >
                 <FileText size={13} className="text-white/45 shrink-0" />
-                <span className="flex-1 min-w-0 truncate text-[13px] text-white/90">{fname}</span>
+                <span className="flex-1 min-w-0 truncate text-md text-white/90">{fname}</span>
                 {usage > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/[0.08] text-white/70 shrink-0 tabular-nums">
+                  <span className="text-2xs px-1.5 py-0.5 rounded-full bg-white/[0.08] text-white/70 shrink-0 tabular-nums">
                     {usage}× cited
                   </span>
                 )}
-                <span className="text-[10px] text-white/40 shrink-0">{new Date(r.importedAt).toLocaleDateString()}</span>
+                <span className="text-2xs text-white/40 shrink-0">{new Date(r.importedAt).toLocaleDateString()}</span>
               </button>
             )
           })}
@@ -2571,6 +2713,7 @@ function QuizView({ selected, selectedText, courseId, studyItems, onSave }: { se
 
 function FlashcardsView({ selectedText, studyItems, courseId, onReviewStudyItem, onSave, onStatus, onOpenPanic }: { selectedText: string; studyItems: StudyItem[]; courseId?: string; onReviewStudyItem: (id: string, difficulty: NonNullable<StudyItem['difficulty']>) => Promise<void>; onSave: () => void; onStatus: (msg: string) => void; onOpenPanic: () => void }) {
   const [drafts, setDrafts] = useState<FlashcardDraft[]>([])
+  const [syncing, setSyncing] = useState(false)
 
   function generate() {
     if (!selectedText) return
@@ -2699,7 +2842,9 @@ function FlashcardsView({ selectedText, studyItems, courseId, onReviewStudyItem,
           {drafts.length === 0 && (
             <button
               className="review-button"
+              disabled={syncing}
               onClick={async () => {
+                setSyncing(true)
                 try {
                   const r = await ipc.invoke<{ notesProcessed: number; totalCreated: number; totalUpdated: number; totalDeleted: number }>('study:syncAllNotes', {})
                   // Defensive: backend may evolve. Don't crash on missing fields.
@@ -2708,12 +2853,14 @@ function FlashcardsView({ selectedText, studyItems, courseId, onReviewStudyItem,
                 } catch (err) {
                   const msg = err instanceof Error ? err.message : String(err)
                   onStatus(`Sync failed: ${msg}`)
+                } finally {
+                  setSyncing(false)
                 }
                 onSave()
               }}
               title="Re-derive flashcards from all notes (heading-based, level 3)"
             >
-              <Sparkles size={15} /> Sync from notes
+              {syncing ? <Spinner size={15} /> : <Sparkles size={15} />} Sync from notes
             </button>
           )}
           {drafts.length === 0
@@ -2755,7 +2902,7 @@ function FlashcardsView({ selectedText, studyItems, courseId, onReviewStudyItem,
         </>
       )}
       {drafts.length === 0 && cards.length === 0 && !selectedText && (
-        <EmptyHint message="No flashcards yet" hint="Select a document to generate flashcards, or create them manually." />
+        <EmptyState icon={Layers} title="No flashcards yet" description="Select a document to generate flashcards, or create them manually." />
       )}
     </section>
   )

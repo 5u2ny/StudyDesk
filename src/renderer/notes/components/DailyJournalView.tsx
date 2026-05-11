@@ -142,21 +142,21 @@ export function DailyJournalView({ notes, currentCourse, onUpdate, onRefresh, on
   return (
     <div className="flex flex-col h-full">
       {/* Header — date navigation, "linked" feel: minimal, keyboard-first */}
-      <div className="px-6 pt-5 pb-4 border-b border-white/[0.06]">
+      <div className="daily-journal-header">
         <div className="flex items-baseline justify-between gap-4">
           <div>
-            <div className="text-[10px] uppercase tracking-[0.18em] text-white/40 font-bold mb-1.5">
+            <div className="daily-journal-eyebrow">
               Daily{currentCourse ? ` · ${currentCourse.code ?? currentCourse.name}` : ''}
             </div>
-            <h1 className="text-[28px] font-bold text-white leading-tight tracking-tight">
+            <h1 className="daily-journal-title">
               {humanLabel(activeKey)}
             </h1>
-            <div className="text-[12px] text-white/45 mt-0.5">{dateLabel(activeKey)}</div>
+            <div className="daily-journal-date">{dateLabel(activeKey)}</div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={goPrev}
-              className="w-8 h-8 rounded-md flex items-center justify-center text-white/55 hover:text-white hover:bg-white/[0.06] transition-all"
+              className="daily-journal-nav-btn"
               title="Previous day  (⌘[)"
             >
               <ChevronLeft size={15} />
@@ -165,10 +165,8 @@ export function DailyJournalView({ notes, currentCourse, onUpdate, onRefresh, on
               onClick={goToday}
               disabled={isToday}
               className={cn(
-                'h-8 px-3 rounded-md text-[12px] font-semibold border transition-all',
-                isToday
-                  ? 'bg-white/[0.04] border-white/[0.06] text-white/45 cursor-default'
-                  : 'bg-blue-500/10 border-blue-500/30 text-blue-200 hover:bg-blue-500/20'
+                'daily-journal-today-btn',
+                isToday && 'is-current'
               )}
               title="Jump to today  (⌘T)"
             >
@@ -176,7 +174,7 @@ export function DailyJournalView({ notes, currentCourse, onUpdate, onRefresh, on
             </button>
             <button
               onClick={goNext}
-              className="w-8 h-8 rounded-md flex items-center justify-center text-white/55 hover:text-white hover:bg-white/[0.06] transition-all"
+              className="daily-journal-nav-btn"
               title="Next day  (⌘])"
             >
               <ChevronRight size={15} />
@@ -207,21 +205,16 @@ export function DailyJournalView({ notes, currentCourse, onUpdate, onRefresh, on
 
       {/* Recent days strip */}
       {recentDays.length > 0 && (
-        <div className="px-6 py-3 border-t border-white/[0.06] flex items-center gap-2 overflow-x-auto scrollbar-none shrink-0">
-          <CalendarDays size={11} className="text-white/40 shrink-0" />
-          <span className="text-[10px] uppercase tracking-wider text-white/40 font-bold mr-1 shrink-0">Recent</span>
+        <div className="daily-journal-recent-strip">
+          <CalendarDays size={11} className="daily-journal-recent-icon" />
+          <span className="daily-journal-recent-label">Recent</span>
           {recentDays.map(k => {
             const active = k === activeKey
             return (
               <button
                 key={k}
                 onClick={() => setActiveKey(k)}
-                className={cn(
-                  'shrink-0 h-7 px-2.5 rounded-md text-[11px] font-medium whitespace-nowrap transition-all',
-                  active
-                    ? 'bg-white/[0.10] text-white border border-white/[0.10]'
-                    : 'text-white/55 hover:text-white/95 hover:bg-white/[0.04] border border-transparent'
-                )}
+                className={cn('daily-journal-recent-btn', active && 'is-active')}
               >
                 {humanLabel(k) === 'Today' || humanLabel(k) === 'Yesterday' ? humanLabel(k) : dateLabel(k)}
               </button>
@@ -248,25 +241,25 @@ function DayEmptyState({
       : 'A daily entry for class notes, questions, decisions, or rough thinking.'
 
   return (
-    <div className="h-full flex flex-col items-center justify-center px-6 py-16 text-center max-w-[520px] mx-auto">
-      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/15 border border-white/[0.10] flex items-center justify-center mb-4">
-        <Sparkles size={18} className="text-blue-300" />
+    <div className="daily-journal-empty">
+      <div className="daily-journal-empty-icon">
+        <Sparkles size={18} />
       </div>
-      <h2 className="text-[18px] font-bold text-white mb-2">{headline}</h2>
-      <p className="text-[13px] text-white/55 leading-relaxed mb-6">{sub}</p>
+      <h2 className="daily-journal-empty-title">{headline}</h2>
+      <p className="daily-journal-empty-desc">{sub}</p>
       <button
         onClick={onStart}
         disabled={disabled}
-        className="h-9 px-5 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-200 hover:bg-blue-500/25 hover:border-blue-500/50 disabled:opacity-50 text-[13px] font-semibold transition-all"
+        className="btn-primary daily-journal-empty-cta"
       >
         {disabled ? 'Creating…' : 'Start writing'}
       </button>
-      <div className="mt-6 flex items-center gap-3 text-[10px] text-white/35 uppercase tracking-wider font-semibold">
-        <kbd className="px-1.5 py-0.5 rounded border border-white/[0.10] bg-white/[0.04]">⌘T</kbd> today
+      <div className="daily-journal-shortcuts">
+        <kbd>⌘T</kbd> today
         <span>·</span>
-        <kbd className="px-1.5 py-0.5 rounded border border-white/[0.10] bg-white/[0.04]">⌘[</kbd> prev
+        <kbd>⌘[</kbd> prev
         <span>·</span>
-        <kbd className="px-1.5 py-0.5 rounded border border-white/[0.10] bg-white/[0.04]">⌘]</kbd> next
+        <kbd>⌘]</kbd> next
       </div>
     </div>
   )

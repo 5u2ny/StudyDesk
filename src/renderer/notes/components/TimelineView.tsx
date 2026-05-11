@@ -8,6 +8,7 @@
 
 import React, { useMemo, useRef, useEffect } from 'react'
 import { CalendarDays, FileText, Sparkles, Image as ImageIcon, ClipboardList } from 'lucide-react'
+import { EmptyState } from './EmptyState'
 import type { Note, AcademicDeadline, Capture, StudyItem, Course } from '@schema'
 
 interface Props {
@@ -145,15 +146,7 @@ export function TimelineView({ notes, deadlines, captures, studyItems, courses, 
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-center px-8 py-16">
-        <div className="w-12 h-12 rounded-xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center mb-4">
-          <CalendarDays size={20} className="text-white/55" />
-        </div>
-        <h2 className="text-[16px] font-bold text-white mb-2">No timeline data yet</h2>
-        <p className="text-[12px] text-white/55 max-w-sm">
-          Add deadlines, write daily entries, or capture passages — they'll plot here in chronological order.
-        </p>
-      </div>
+      <EmptyState icon={CalendarDays} title="Nothing on the timeline" description="Deadlines, captures, and notes will appear here as you add them." />
     )
   }
 

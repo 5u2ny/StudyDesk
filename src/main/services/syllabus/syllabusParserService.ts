@@ -119,9 +119,10 @@ function inferAssignmentType(line: string): ExtractedAssignment['type'] {
 
 function titleFromLine(line: string): string {
   return line
-    .replace(/\b(due|by|on)\b/ig, '')
+    .replace(/\b(due|by|on|at)\b/ig, '')
     .replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g, '')
     .replace(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}(?:,\s*\d{4})?/ig, '')
+    .replace(/\b\d{1,2}:\d{2}\s*(?:AM|PM)?\b/ig, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 90) || 'Academic deadline';

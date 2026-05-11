@@ -18,6 +18,7 @@ import {
   GraduationCap,
   X,
   Layers,
+  LayoutDashboard,
   CalendarDays,
   Sparkles,
   Target,
@@ -35,22 +36,22 @@ interface IconRailProps {
   onSelectCourse: (courseId: string | null) => void
   onAddCourse: () => void
   onOpenSettings?: () => void
+  onBackToDashboard?: () => void
 }
 
-export function IconRail({ courses, activeCourseId, onSelectCourse, onAddCourse, onOpenSettings }: IconRailProps) {
+export function IconRail({ courses, activeCourseId, onSelectCourse, onAddCourse, onOpenSettings, onBackToDashboard }: IconRailProps) {
   return (
     <div className="hidden md:flex w-[60px] shrink-0 flex-col items-center gap-2 py-2">
-      {/* All courses pill */}
+      {/* Back to dashboard */}
       <button
-        onClick={() => onSelectCourse(null)}
+        onClick={() => onBackToDashboard?.()}
         className={cn(
           'group relative w-10 h-10 rounded-xl flex items-center justify-center transition-all',
           'border border-white/[0.06] bg-white/[0.04] hover:bg-white/[0.08] hover:border-white/[0.12]',
-          activeCourseId === null && 'bg-white/[0.10] border-white/[0.18] ring-1 ring-blue-500/30'
         )}
-        title="All courses"
+        title="Back to dashboard"
       >
-        <Layers size={16} className="text-white/70 group-hover:text-white" />
+        <LayoutDashboard size={16} className="text-white/70 group-hover:text-white" />
       </button>
       <div className="h-px w-6 bg-white/[0.08]" />
       {/* Per-course avatars */}
@@ -63,7 +64,7 @@ export function IconRail({ courses, activeCourseId, onSelectCourse, onAddCourse,
               key={course.id}
               onClick={() => onSelectCourse(course.id)}
               className={cn(
-                'group relative w-10 h-10 rounded-xl flex items-center justify-center text-[10px] font-bold transition-all',
+                'group relative w-10 h-10 rounded-xl flex items-center justify-center text-2xs font-bold transition-all',
                 'border border-white/[0.08] bg-gradient-to-br from-white/[0.08] to-white/[0.02]',
                 'hover:scale-105 hover:border-white/[0.20]',
                 isActive && 'ring-1 ring-blue-500/40 shadow-[0_0_0_2px_rgba(59,130,246,0.15)]'
@@ -114,7 +115,7 @@ export interface SidebarRowProps {
   title: string
   meta?: string
   icon?: React.ReactNode
-  badge?: { label: string; tone: 'imported' | 'parsed' | 'pending' }
+  badge?: { label: string; tone: 'imported' | 'parsed' | 'pending' | 'warning' | 'critical' }
   active?: boolean
   onClick?: () => void
 }
@@ -145,17 +146,19 @@ export function SidebarRow({ title, meta, icon, badge, active, onClick }: Sideba
       )}
       <span className="flex-1 min-w-0">
         <span className={cn(
-          'block text-[12.5px] font-semibold truncate transition-colors',
+          'block text-sm font-semibold truncate transition-colors',
           active ? 'text-white' : 'text-white/85 group-hover:text-white'
         )}>{title || 'Untitled'}</span>
-        {meta && <span className="block text-[10.5px] text-white/40 truncate mt-0.5">{meta}</span>}
+        {meta && <span className="block text-xs text-white/40 truncate mt-0.5">{meta}</span>}
       </span>
       {badge && (
         <span className={cn(
-          'shrink-0 px-1.5 py-px rounded text-[9px] font-bold uppercase tracking-wider whitespace-nowrap',
-          badge.tone === 'imported' && 'bg-emerald-500/12 text-emerald-300 border border-emerald-500/20',
+          'shrink-0 px-1.5 py-px rounded text-2xs font-bold uppercase tracking-wider whitespace-nowrap',
+          badge.tone === 'imported' && 'bg-[var(--sd-success-soft)] text-[var(--sd-success)] border border-[var(--sd-success)]',
           badge.tone === 'parsed' && 'bg-blue-500/12 text-blue-300 border border-blue-500/20',
-          badge.tone === 'pending' && 'bg-amber-500/12 text-amber-300 border border-amber-500/20',
+          badge.tone === 'pending' && 'bg-[var(--sd-warn-soft)] text-[var(--sd-warn)] border border-[var(--sd-warn)]',
+          badge.tone === 'warning' && 'bg-[var(--sd-warn-soft)] text-[var(--sd-warn)] border border-[var(--sd-warn)]',
+          badge.tone === 'critical' && 'bg-[var(--sd-danger-soft)] text-[var(--sd-danger)] border border-[var(--sd-danger)]',
         )}>{badge.label}</span>
       )}
     </button>
@@ -187,9 +190,9 @@ export function SidebarSection({ title, icon: Icon, count, onAdd, children, defa
             className={cn('transition-transform', open && 'rotate-90')}
           />
           <Icon size={12} />
-          <span className="text-[10px] font-bold uppercase tracking-wider">{title}</span>
+          <span className="text-2xs font-bold uppercase tracking-wider">{title}</span>
           {typeof count === 'number' && count > 0 && (
-            <span className="ml-1 px-1.5 py-px rounded text-[9px] font-bold bg-white/[0.06] text-white/55 normal-case tracking-normal">
+            <span className="ml-1 px-1.5 py-px rounded text-2xs font-bold bg-white/[0.06] text-white/55 normal-case tracking-normal">
               {count}
             </span>
           )}
@@ -228,9 +231,8 @@ export function LeftSidebar({ searchSpaceLabel, onCollapse, searchQuery, onSearc
         <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500/25 to-purple-500/15 border border-white/[0.10] flex items-center justify-center shrink-0">
           <GraduationCap size={13} className="text-blue-300" />
         </span>
-        <div className="flex-1 min-w-0 -space-y-0.5">
-          <div className="text-[10px] text-white/40 leading-none uppercase tracking-wider font-semibold">Workspace</div>
-          <div className="text-[13px] font-bold text-white truncate leading-tight">{searchSpaceLabel}</div>
+        <div className="flex-1 min-w-0">
+          <div className="text-md font-bold text-white truncate leading-tight">{searchSpaceLabel}</div>
         </div>
         <button
           onClick={onCollapse}
@@ -254,7 +256,7 @@ export function LeftSidebar({ searchSpaceLabel, onCollapse, searchQuery, onSearc
             value={searchQuery}
             onChange={e => onSearchChange(e.target.value)}
             placeholder="Search notes, captures…"
-            className="flex-1 min-w-0 bg-transparent border-0 outline-none text-[12px] text-white/95 placeholder:text-white/30"
+            className="flex-1 min-w-0 bg-transparent border-0 outline-none text-sm text-white/95 placeholder:text-white/30"
             aria-label="Search notes"
           />
           {searchQuery && (
@@ -292,29 +294,25 @@ export function MainPanel({ tabs, activeTabId, onTabSelect, rightActions, childr
   return (
     <main className="flex-1 min-w-0 rounded-xl border border-white/[0.06] bg-[var(--sd-ink-1)] flex flex-col overflow-hidden">
       <header className="flex items-center h-11 px-2 border-b border-white/[0.06] shrink-0 gap-2">
-        <nav className="flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto scrollbar-none">
+        <nav role="tablist" className="flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto scrollbar-none">
           {tabs.map(tab => {
             const active = activeTabId === tab.id
             return (
               <button
                 key={tab.id}
+                role="tab"
+                aria-selected={active}
                 onClick={() => onTabSelect(tab.id)}
                 title={tab.label}
                 className={cn(
-                  // Compact: gap-1 + px-1.5 + 11px font fits all 10 tabs
-                  // at the typical workspace width without overflow.
-                  // Inactive tabs hide the icon to save horizontal space —
-                  // the active tab gets its icon as a visual anchor.
-                  'flex items-center gap-1 h-7 px-1.5 rounded-md text-[11px] font-medium whitespace-nowrap shrink-0',
+                  'flex items-center gap-1.5 h-8 px-2 rounded-md text-sm font-medium whitespace-nowrap shrink-0',
                   'transition-all duration-150',
                   active
-                    ? 'bg-white/[0.08] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] px-2'
+                    ? 'bg-white/[0.08] text-white border-b-2 border-[var(--sd-accent)] px-2.5'
                     : 'text-white/55 hover:text-white/90 hover:bg-white/[0.04]'
                 )}
               >
-                {/* Show icon only for active tab — saves horizontal
-                    space so all 10 tabs fit on a default-width window. */}
-                {active && <span className="shrink-0">{tab.icon}</span>}
+                <span className="shrink-0 opacity-60">{tab.icon}</span>
                 <span>{tab.label}</span>
               </button>
             )
@@ -322,8 +320,7 @@ export function MainPanel({ tabs, activeTabId, onTabSelect, rightActions, childr
         </nav>
         {rightActions && <div className="flex items-center gap-0.5 shrink-0 pl-2 border-l border-white/[0.04]">{rightActions}</div>}
       </header>
-      {/* Active-tab strip indicator removed — relies on tab background to convey selection */}
-      <div className="flex-1 overflow-auto scrollbar-thin">{children}</div>
+      <div role="tabpanel" className="flex-1 overflow-auto scrollbar-thin">{children}</div>
       {activeTab && (
         <div className="sr-only" aria-live="polite">Active tool: {activeTab.label}</div>
       )}
@@ -368,7 +365,7 @@ export function RightPanel({ open, onClose, activeTab, onTabChange, sourcesSlot,
           <span className="w-6 h-6 rounded-md bg-white/[0.04] border border-white/[0.06] flex items-center justify-center">
             <Folder size={11} className="text-white/65" />
           </span>
-          <span className="text-[11px] uppercase tracking-wider text-white/65 font-bold">Documents</span>
+          <span className="text-xs uppercase tracking-wider text-white/65 font-bold">Documents</span>
         </div>
         <button
           onClick={onClose}
@@ -389,7 +386,7 @@ export function RightPanel({ open, onClose, activeTab, onTabChange, sourcesSlot,
                 key={tab.id}
                 onClick={() => onTabChange(tab.id)}
                 className={cn(
-                  'flex-1 flex items-center justify-center gap-1.5 h-7 rounded-md text-[11px] font-semibold whitespace-nowrap',
+                  'flex-1 flex items-center justify-center gap-1.5 h-7 rounded-md text-xs font-semibold whitespace-nowrap',
                   'transition-all duration-150',
                   active
                     ? 'bg-white/[0.10] text-white shadow-[0_0_0_1px_rgba(255,255,255,0.04)]'
@@ -399,7 +396,7 @@ export function RightPanel({ open, onClose, activeTab, onTabChange, sourcesSlot,
                 <Icon size={11} />
                 {tab.label}
                 {tab.badge && tab.badge > 0 && (
-                  <span className="ml-0.5 px-1 py-px rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">{tab.badge > 9 ? '9+' : tab.badge}</span>
+                  <span className="ml-0.5 px-1 py-px rounded text-2xs font-bold bg-[var(--sd-warn-soft)] text-[var(--sd-warn)] border border-[var(--sd-warn)]">{tab.badge > 9 ? '9+' : tab.badge}</span>
                 )}
               </button>
             )
@@ -426,7 +423,7 @@ export function RightPanelCollapsedButton({ onClick, badge }: { onClick: () => v
     >
       <ChevronLeft size={14} />
       {badge && badge > 0 && (
-        <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-blue-500 text-[9px] font-bold text-white flex items-center justify-center">
+        <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-blue-500 text-2xs font-bold text-white flex items-center justify-center">
           {badge > 9 ? '9+' : badge}
         </span>
       )}
@@ -438,7 +435,7 @@ export function RightPanelCollapsedButton({ onClick, badge }: { onClick: () => v
 // Outer flexbox: gap-2 p-2 ambient bg.
 export function ShellContainer({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-screen w-screen gap-1.5 p-1.5 bg-[#08080c] overflow-hidden text-white antialiased relative">
+    <div className="flex h-screen w-screen gap-1.5 p-1.5 bg-[var(--sd-ink-0)] overflow-hidden text-white antialiased relative">
       {children}
     </div>
   )

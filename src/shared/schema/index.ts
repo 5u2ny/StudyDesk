@@ -289,6 +289,8 @@ export interface Settings {
   llmProvider?: 'anthropic' | 'openai';
   llmApiKeyEncrypted?: string;
   llmModel?: string;
+  ollamaEndpoint?: string;    // default http://localhost:11434
+  ollamaModel?: string;       // default gemma4:latest
   gmailEnabled: boolean;
   gmailEmail?: string;
   gmailAppPasswordEncrypted?: string;     // legacy: App Password path

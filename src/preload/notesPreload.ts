@@ -44,6 +44,9 @@ const INVOKE_CHANNELS = new Set([
   'attentionAlerts:snooze',
   'attentionAlerts:resolve',
   'capture:list',
+  'capture:unlinked',
+  'capture:linkToNote',
+  'capture:save',
   // Course materials folder watcher
   'course:pickMaterialsFolder',
   'course:clearMaterialsFolder',
@@ -57,6 +60,13 @@ const INVOKE_CHANNELS = new Set([
   'notes:publishStaticSite',
   'notes:listRevisions',
   'notes:restoreRevision',
+  // AI generation
+  'ai:generateQuiz',
+  'ai:generateFlashcards',
+  'ai:generateStudyNotes',
+  'ai:checkOllama',
+  'ai:summarize',
+  'notes:autoTag',
 ]);
 
 const SUBSCRIBE_CHANNELS = new Set([

@@ -8,6 +8,22 @@ export interface LLMMessage {
 
 export async function callLLM(messages: LLMMessage[]): Promise<string> {
   const settings = focusStore.getSettings();
+
+  // Local Ollama — no API key required
+  if (settings.aiMode === 'local_server') {
+    const endpoint = settings.ollamaEndpoint ?? 'http://localhost:11434';
+    const model = settings.ollamaModel ?? 'gemma4:latest';
+    const res = await fetch(`${endpoint}/api/chat`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model, messages, stream: false }),
+    });
+    const data = await res.json() as any;
+    if (!res.ok) throw new Error(data.error ?? `Ollama error (${res.status})`);
+    return data.message.content;
+  }
+
+  // Cloud providers require an API key
   if (!settings.llmProvider || !settings.llmApiKeyEncrypted) {
     throw new Error('LLM not configured — set an API key in Settings');
   }

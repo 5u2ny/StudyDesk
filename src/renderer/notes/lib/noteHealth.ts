@@ -172,3 +172,54 @@ export function summarizeIssues(issues: LintIssue[]): {
   }
   return { total: issues.length, byKind, warnCount, infoCount }
 }
+
+// ── Note Health Score ─────────────────────────────────────────────────────────
+// Computes a 0-100 health score for a note based on completeness indicators.
+
+export type HealthColor = 'green' | 'yellow' | 'red'
+
+export interface HealthIndicator {
+  label: string
+  ok: boolean
+}
+
+export interface NoteHealthResult {
+  score: number           // 0-100
+  color: HealthColor
+  indicators: HealthIndicator[]
+}
+
+/**
+ * Compute a health score for a note based on completeness and freshness.
+ */
+export function computeNoteHealthScore(note: Note): NoteHealthResult {
+  const indicators: HealthIndicator[] = []
+
+  // 1. Has title
+  const hasTitle = !!(note.title && note.title.trim())
+  indicators.push({ label: 'Has title', ok: hasTitle })
+
+  // 2. Has content
+  const hasContent = !isEmptyContent(note.content)
+  indicators.push({ label: 'Has content', ok: hasContent })
+
+  // 3. Has tags
+  const hasTags = !!(note.tags && note.tags.length > 0)
+  indicators.push({ label: 'Has tags', ok: hasTags })
+
+  // 4. Has linked captures or study items
+  const hasCaptures = !!(note.capturedFromIds && note.capturedFromIds.length > 0)
+  indicators.push({ label: 'Linked captures', ok: hasCaptures })
+
+  // 5. Recently updated (within 7 days = green, 14 = yellow, 30+ = red)
+  const daysSinceUpdate = Math.floor((Date.now() - note.updatedAt) / 86_400_000)
+  const recentlyUpdated = daysSinceUpdate <= 14
+  indicators.push({ label: `Updated ${daysSinceUpdate}d ago`, ok: recentlyUpdated })
+
+  // Score: each indicator is worth 20 points
+  const score = indicators.filter(i => i.ok).length * 20
+
+  const color: HealthColor = score >= 80 ? 'green' : score >= 40 ? 'yellow' : 'red'
+
+  return { score, color, indicators }
+}

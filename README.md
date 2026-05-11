@@ -1,29 +1,35 @@
-# Focus OS Student Edition
+# StudyDesk
 
-A free, open source, local-first academic command center for students. Focus OS
-turns courses, syllabi, assignments, captures, study items, confusions, and
-critical emails into a calm Today view, deadline board, and focus HUD.
+A local-first academic workspace for students. StudyDesk turns courses,
+syllabi, assignments, captured source material, study cards, reminders, and
+class notes into one desktop app with a lightweight notch HUD and a full
+workspace window.
+
+The main app is no longer a generic note editor. It opens to a course dashboard,
+then moves into a structured workspace with notes, deadlines, study tools,
+materials, maps, timelines, and an optional Studio panel for generation.
 
 Core flows work without paid AI APIs, hosted models, Ollama, or continuous local
-model inference. AI is optional and disabled by default.
+model inference. AI helpers are optional and fail softly when no local model is
+available.
 
 ## Install
 
 ```bash
-git clone https://github.com/5u2ny/focus-os.git
-cd focus-os
+git clone https://github.com/5u2ny/studydesk-hud-ui.git
+cd studydesk-hud-ui
 npm install
 npm start
 ```
 
 Requires macOS, Node 20+, and Xcode Command Line Tools
 (`xcode-select --install`). On first launch, grant **Accessibility**
-permission to Focus OS in System Settings → Privacy & Security so the global
+permission to StudyDesk in System Settings → Privacy & Security so the global
 mouse hook can drive auto-capture.
 
 ## Notch UI
 
-Focus OS lives in the MacBook notch. The floating window is a frameless
+StudyDesk lives in the MacBook notch. The floating window is a frameless
 always-on-top panel pinned to the exact top-center of the display, matching the
 hardware notch height pixel-for-pixel (38 px on M-series Pro, 32 px on Air).
 
@@ -38,8 +44,8 @@ with a 280 ms ease-out transition, revealing:
   due review count).
 - **Center cap** -- Opaque black fill continuous with the hardware notch. Blank;
   acts as the hover target.
-- **Right wing** -- Feature dock icons (Today, Courses, Deadlines, Capture,
-  Study, Alerts, Workspace, Settings) with numeric badges.
+- **Right wing** -- Feature dock icons for Today, Capture, Timer, and
+  Deadlines with live counts.
 
 Clicking a dock icon opens a **popover panel** (540 x 380 px) that drops below
 the bar. Each popover renders live data from the local store; there are no
@@ -55,28 +61,51 @@ updates every tick and doubles as a quick launcher: Show, Notes, Quit.
 
 ### Workspace window
 
-Clicking the Workspace dock icon (or `ipc:window:openWorkspace`) opens a
-separate 920 x 680 standard-frame window with a TipTap note editor, course
-sidebar, tool tabs (Today, Quiz, Flashcards, Assignment, Syllabus, Class),
-and a right rail showing deadlines, assignment checklist, study queue,
-confusions, and alerts. The workspace hides on close rather than destroying,
-so reopening is instant.
+Clicking **Open StudyDesk** opens a separate standard-frame workspace window.
+The current workspace opens to a course dashboard with:
+
+- course cards for every active course,
+- top-level counts for deadlines, cards due, assignments, and reminders,
+- upcoming deadline rows,
+- setup reminders and course-specific alerts,
+- an **Add Course** flow with optional syllabus import.
+
+Selecting a course moves into the workspace shell. The primary tabs are:
+
+- **Today** -- focused current-course surface with active note context.
+- **Notes** -- searchable note list with document type badges.
+- **Deadlines** -- course deadline board with complete actions.
+- **Map** -- relationship map for notes and linked sources.
+
+Less frequent tools stay in the overflow menu: daily journal, flashcards,
+materials, class mode, dashboard, quiz, assignment parser, syllabus parser,
+and timeline.
+
+The workspace hides on close rather than destroying, so reopening is instant.
 
 ## Features
 
-- **Today** -- current focus, next deadline, due today/tomorrow/this week,
-  critical alerts, confusions, and the recommended next action.
-- **Courses** -- course workspaces for assignments, deadlines, captures,
-  study items, and confusions.
-- **Deadlines** -- academic due-date board replacing a generic calendar.
-- **Capture** -- highlight text in any app and press `Cmd+Shift+C`; turn
-  captures into flashcards, concepts, or confusions.
-- **Study** -- flashcards, concepts, definitions, questions, exam hints, and
-  unresolved confusions in one review queue.
-- **Syllabus Import** -- paste or select a syllabus note, parse it into
-  courses, assignments, deadlines, and setup tasks, then review and confirm.
-- **Critical Alerts** -- Gmail is optional. When enabled, local rules surface
-  only emails that likely require action; Focus OS does not generate reply
+- **Dashboard first** -- launch into a clean overview of courses, deadlines,
+  due cards, assignments, and reminders.
+- **Notes tab** -- a first-class notes browser instead of hiding notes inside
+  the editor surface.
+- **Capture inbox** -- view unlinked captures and attach them to the active
+  note; `Cmd+Shift+L` links the newest unlinked capture to the current note.
+- **Materials reader** -- attach course material folders, import PDFs or
+  Markdown, and read imported materials in a dedicated view.
+- **Studio panel** -- generate summaries, study notes, quizzes, and flashcards
+  from the active note through the local generation service.
+- **Auto-tagging** -- content edits trigger best-effort note tags based on
+  extracted keywords and course context.
+- **Syllabus review** -- paste or select syllabus text, parse course metadata,
+  class meetings, assignments, deadlines, readings, and setup tasks, then
+  review before confirming import.
+- **Note health** -- surface thin notes, missing links, and review issues with
+  lightweight badges.
+- **Relation map and timeline** -- inspect note relationships, linked captures,
+  deadlines, study items, and course chronology.
+- **Critical alerts** -- Gmail is optional. When enabled, local rules surface
+  only emails that likely require action; StudyDesk does not generate reply
   drafts.
 
 API keys are optional. Gmail tokens are encrypted via macOS Keychain
@@ -85,10 +114,25 @@ API keys are optional. Gmail tokens are encrypted via macOS Keychain
 ## Stack
 
 Electron 41 · React 18 · TypeScript 5.9 · Vite 8 · Tailwind · Radix UI ·
-TipTap 2 (notes) · `uiohook-napi` (global capture shortcut) ·
-local JSON persistence in `src/main/services/store.ts` · `imapflow` +
-`mailparser` (optional Gmail critical alerts) · deterministic local rules by
-default.
+TipTap 2 (notes) · Phosphor and Lucide icons · `uiohook-napi` global capture
+shortcuts · `pdfjs-dist`, `mammoth`, and `tesseract.js` for local document and
+OCR workflows · `react-force-graph-2d` for note maps · `ts-fsrs` for study
+scheduling · local JSON persistence in `src/main/services/store.ts` ·
+`imapflow` + `mailparser` for optional Gmail critical alerts · deterministic
+local rules by default.
+
+## Development
+
+```bash
+npm run typecheck
+npm test
+npm run build
+npm start
+```
+
+`npm start` builds the renderer and main process, applies the development
+rebrand script, and launches the actual Electron app. Use it when checking the
+desktop UI. `npm run dev:renderer` is only for isolated renderer debugging.
 
 ## Troubleshooting
 
@@ -104,6 +148,15 @@ npm start
 
 This only removes V8 bytecode and Blink resource caches. User data in
 `focus-os-store.json` is not affected.
+
+**Old floating HUD appears but not the workspace.** Use the **Open StudyDesk**
+button in the HUD or the Window menu item **StudyDesk — Workspace**. The
+workspace is created at app start and may sit behind the HUD if another Electron
+window already has focus.
+
+**Wrong checkout.** The current StudyDesk repo is
+`https://github.com/5u2ny/studydesk-hud-ui`. Do not use older sibling checkouts
+when committing workspace UI changes.
 
 See [`CLAUDE.md`](./CLAUDE.md) for the architecture deep-dive and
 [`CONTRIBUTING.md`](./CONTRIBUTING.md) for dev workflow. MIT licensed.

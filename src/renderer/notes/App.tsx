@@ -74,6 +74,8 @@ interface AssignmentParseReview {
   submissionChecklist: ChecklistItem[]
 }
 
+const MIN_EXTRACTED_PDF_CHARS = 120
+
 interface SyllabusDeadlineReview {
   title: string
   deadlineAt: number
@@ -194,6 +196,71 @@ function tipTapDocument(text: string): string {
       ? [{ type: 'paragraph', content: [{ type: 'text', text: text.trim() }] }]
       : [],
   })
+}
+
+function PdfTextImportControl({
+  title,
+  description,
+  onText,
+  onTooShort,
+  onError,
+}: {
+  title: string
+  description: string
+  onText: (payload: { title: string; text: string; pageCount?: number }) => void | Promise<void>
+  onTooShort: (message: string) => void
+  onError: (message: string) => void
+}) {
+  const [busy, setBusy] = useState(false)
+
+  async function handleFile(file: File) {
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      onError(`Use a PDF file for this import: ${file.name}`)
+      return
+    }
+    setBusy(true)
+    try {
+      const { extractFileText } = await import('./lib/extractFileText')
+      const result = await extractFileText(file)
+      const text = result.text.trim()
+      if (text.length < MIN_EXTRACTED_PDF_CHARS) {
+        onTooShort(`"${file.name}" has very little embedded text. It may be a scanned PDF; use the image OCR fallback only if you need to extract text from the scan.`)
+        return
+      }
+      await onText({ title: result.title || file.name.replace(/\.pdf$/i, ''), text, pageCount: result.pageCount })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      onError(`PDF import failed: ${msg}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className={`scan-drop-zone ${busy ? 'busy' : ''}`}>
+      <div className="scan-drop-icon">
+        {busy ? <Spinner size={16} /> : <FileText size={18} />}
+      </div>
+      <div className="scan-drop-body">
+        <strong>{busy ? 'Extracting PDF text...' : title}</strong>
+        <span>{description}</span>
+      </div>
+      <label className="scan-drop-button">
+        Browse
+        <input
+          type="file"
+          accept="application/pdf,.pdf"
+          disabled={busy}
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            if (file) void handleFile(file)
+            event.target.value = ''
+          }}
+          style={{ display: 'none' }}
+        />
+      </label>
+    </div>
+  )
 }
 
 function extractQuestionsFromNote(note: Note): QuizQuestionDraft[] {
@@ -2333,16 +2400,39 @@ function AssignmentParserView({ selected, selectedText, courseId, deadlines, onS
   const [parsing, setParsing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [pdfSource, setPdfSource] = useState<{ note: Note; text: string; pageCount?: number } | null>(null)
+  const assignmentText = pdfSource?.text.trim() || selectedText
+  const sourceNote = pdfSource?.note ?? selected
+
+  useEffect(() => {
+    setPdfSource(null)
+    setReview(null)
+    setError(null)
+  }, [selected?.id])
+
+  async function handlePdfText(payload: { title: string; text: string; pageCount?: number }) {
+    const note = await ipc.invoke<Note>('notes:create', {
+      title: payload.title || 'Imported assignment prompt',
+      content: tipTapDocument(payload.text),
+    })
+    const updated = await ipc.invoke<Note>('notes:update', {
+      id: note.id,
+      patch: { documentType: 'assignment_prompt', courseId, tags: [] },
+    })
+    setPdfSource({ note: updated, text: payload.text, pageCount: payload.pageCount })
+    setReview(null)
+    setError(null)
+  }
 
   async function handleParse() {
-    if (!selectedText) return
+    if (!assignmentText) return
     setParsing(true)
     setError(null)
     try {
-      const result = await ipc.invoke<AssignmentParseReview>('assignment:parse', { text: selectedText, courseId, title: selected?.title })
+      const result = await ipc.invoke<AssignmentParseReview>('assignment:parse', { text: assignmentText, courseId, title: sourceNote?.title })
       // Defensive: parser may return partial. Initialize empty arrays.
       setReview({
-        title: result?.title ?? selected?.title ?? '',
+        title: result?.title ?? sourceNote?.title ?? '',
         dueDate: result?.dueDate,
         deliverables: result?.deliverables ?? [],
         formatRequirements: result?.formatRequirements ?? [],
@@ -2356,16 +2446,16 @@ function AssignmentParserView({ selected, selectedText, courseId, deadlines, onS
   }
 
   async function handleSave() {
-    if (!review || !selected) return
+    if (!review || !sourceNote) return
     setSaving(true)
     setError(null)
-    const title = review.title.trim() || selected.title || 'Untitled assignment'
+    const title = review.title.trim() || sourceNote.title || 'Untitled assignment'
     const patch = {
       title,
       courseId,
       dueDate: review.dueDate,
       sourceType: 'assignment_prompt' as const,
-      sourceId: selected.id,
+      sourceId: sourceNote.id,
       deliverables: review.deliverables,
       formatRequirements: review.formatRequirements,
       rubricItems: review.rubricItems,
@@ -2373,20 +2463,20 @@ function AssignmentParserView({ selected, selectedText, courseId, deadlines, onS
     }
     try {
       let assignmentId: string
-      if (selected.linkedAssignmentId) {
-        const updated = await ipc.invoke<Assignment>('assignment:update', { id: selected.linkedAssignmentId, patch })
+      if (sourceNote.linkedAssignmentId) {
+        const updated = await ipc.invoke<Assignment>('assignment:update', { id: sourceNote.linkedAssignmentId, patch })
         assignmentId = updated.id
       } else {
         const created = await ipc.invoke<Assignment>('assignment:create', patch)
         assignmentId = created.id
-        await ipc.invoke('notes:update', { id: selected.id, patch: { documentType: 'assignment_prompt', linkedAssignmentId: assignmentId, courseId } })
+        await ipc.invoke('notes:update', { id: sourceNote.id, patch: { documentType: 'assignment_prompt', linkedAssignmentId: assignmentId, courseId } })
       }
       if (review.dueDate) {
-        const existing = deadlines.find(d => d.assignmentId === assignmentId || (d.sourceId === selected.id && d.sourceType === 'assignment_prompt'))
+        const existing = deadlines.find(d => d.assignmentId === assignmentId || (d.sourceId === sourceNote.id && d.sourceType === 'assignment_prompt'))
         if (existing) {
           await ipc.invoke('deadline:update', { id: existing.id, patch: { title: review.title, deadlineAt: review.dueDate, courseId } })
         } else {
-          await ipc.invoke('deadline:create', { title: review.title, deadlineAt: review.dueDate, courseId, assignmentId, type: 'assignment', sourceType: 'assignment_prompt', sourceId: selected.id, confirmed: true })
+          await ipc.invoke('deadline:create', { title: review.title, deadlineAt: review.dueDate, courseId, assignmentId, type: 'assignment', sourceType: 'assignment_prompt', sourceId: sourceNote.id, confirmed: true })
         }
       }
       setReview(null)
@@ -2403,26 +2493,36 @@ function AssignmentParserView({ selected, selectedText, courseId, deadlines, onS
   return (
     <section className="parser-card">
       <header className="parser-header">
-        <div className="parser-tab"><FileText size={15} /> {selected?.title || 'Untitled'}</div>
+        <div className="parser-tab"><FileText size={15} /> {sourceNote?.title || 'Assignment prompt'}</div>
         {!review
-          ? <button className="review-button" onClick={handleParse} disabled={!selectedText || parsing}><Sparkles size={15} /> {parsing ? 'Parsing...' : 'Parse assignment'}</button>
+          ? <button className="review-button" onClick={handleParse} disabled={!assignmentText || parsing}><Sparkles size={15} /> {parsing ? 'Parsing...' : 'Parse assignment'}</button>
           : <button className="review-button" onClick={handleSave} disabled={saving}><Sparkles size={15} /> {saving ? 'Saving...' : 'Save assignment'}</button>
         }
       </header>
+      {!review && (
+        <PdfTextImportControl
+          title="Upload assignment PDF"
+          description="Extract embedded PDF text locally, then parse deliverables and rubric items."
+          onText={handlePdfText}
+          onTooShort={setError}
+          onError={setError}
+        />
+      )}
       {error && (
         <div className="phase3-error" role="alert">
           <strong>Something went wrong:</strong> {error}
           <button onClick={() => setError(null)} aria-label="Dismiss">×</button>
         </div>
       )}
-      {!selectedText && !review && (
-        <EmptyHint message="No document selected" hint="Select a document with assignment text to parse." />
+      {!assignmentText && !review && (
+        <EmptyHint message="No assignment text" hint="Upload an assignment PDF or select a document with assignment text to parse." />
       )}
-      {selectedText && !review && (
+      {assignmentText && !review && (
         <div className="parser-grid">
           <article className="parser-source">
-            <p className="eyebrow">Source: <strong>{selected?.title}</strong></p>
-            <p>{selectedText.slice(0, 300)}{selectedText.length > 300 ? '...' : ''}</p>
+            <p className="eyebrow">Source: <strong>{sourceNote?.title}</strong></p>
+            {pdfSource?.pageCount && <p className="empty-hint">{pdfSource.pageCount} PDF page{pdfSource.pageCount === 1 ? '' : 's'} extracted locally.</p>}
+            <p>{assignmentText.slice(0, 300)}{assignmentText.length > 300 ? '...' : ''}</p>
           </article>
           <article className="parser-details">
             <p className="empty-hint">Click "Parse assignment" to extract details for review.</p>
@@ -2895,6 +2995,15 @@ function SyllabusImportView({ selected, selectedText, courseId, onCreate, onConf
   /** Text to parse: raw paste takes priority over note content. */
   const parseText = rawPaste.trim() || selectedText
 
+  async function handleSyllabusPdfText(payload: { title: string; text: string; pageCount?: number }) {
+    const pageCount = payload.pageCount ?? 1
+    setRawPaste(prev => prev ? `${prev}\n\n${payload.text}` : payload.text)
+    setReview(null)
+    setConfirmResult(null)
+    setError(null)
+    onStatus(`Extracted ${pageCount} PDF page${pageCount === 1 ? '' : 's'} from "${payload.title}".`)
+  }
+
   // ── Parse ───────────────────────────────────────────────────────────
   async function handleParse() {
     if (!parseText) return
@@ -3088,6 +3197,20 @@ function SyllabusImportView({ selected, selectedText, courseId, onCreate, onConf
       {!review && (
         <div className="syllabus-grid">
           <section className="phase3-panel">
+            <h2>Upload syllabus PDF</h2>
+            <PdfTextImportControl
+              title="Upload PDF syllabus"
+              description="Extract embedded PDF text locally and send it through the existing syllabus parser."
+              onText={handleSyllabusPdfText}
+              onTooShort={(message) => {
+                setError(message)
+                onStatus(message)
+              }}
+              onError={(message) => {
+                setError(message)
+                onStatus(message)
+              }}
+            />
             <h2>Paste syllabus text</h2>
             <textarea
               className="syllabus-paste-area"

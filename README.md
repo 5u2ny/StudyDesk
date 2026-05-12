@@ -30,8 +30,7 @@ mouse hook can drive auto-capture.
 ## Notch UI
 
 StudyDesk lives in the MacBook notch. The floating window is a frameless
-always-on-top panel pinned to the exact top-center of the display, matching the
-hardware notch height pixel-for-pixel (38 px on M-series Pro, 32 px on Air).
+always-on-top panel pinned to the top-center of the display.
 
 ### Layout
 
@@ -47,17 +46,16 @@ with a 280 ms ease-out transition, revealing:
 - **Right wing** -- Feature dock icons for Today, Capture, Timer, and
   Deadlines with live counts.
 
-Clicking a dock icon opens a **popover panel** (540 x 380 px) that drops below
-the bar. Each popover renders live data from the local store; there are no
-mock views. A native Objective-C addon (`notch_helper.node`) removes AppKit
-window constraints so the panel can overlap the menu bar and attach flush to
-the display top edge.
+Clicking a dock icon opens a popover panel below the bar. Each popover renders
+live data from the local store; there are no mock views. A native Objective-C
+addon (`notch_helper.node`) removes AppKit window constraints so the panel can
+overlap the menu bar and attach flush to the display top edge.
 
 ### Tray icon
 
 A menu-bar tray icon shows a circular progress ring colored by the current
 timer phase (red for focus, green for break, blue for long break). The ring
-updates every tick and doubles as a quick launcher: Show, Notes, Quit.
+updates every tick and doubles as a quick launcher: Show, Open StudyDesk, Quit.
 
 ### Workspace window
 
@@ -104,13 +102,6 @@ The workspace hides on close rather than destroying, so reopening is instant.
   lightweight badges.
 - **Relation map and timeline** -- inspect note relationships, linked captures,
   deadlines, study items, and course chronology.
-- **Critical alerts** -- Gmail is optional. When enabled, local rules surface
-  only emails that likely require action; StudyDesk does not generate reply
-  drafts.
-
-API keys are optional. Gmail tokens are encrypted via macOS Keychain
-(`safeStorage`) when Gmail is connected.
-
 ## Stack
 
 Electron 41 · React 18 · TypeScript 5.9 · Vite 8 · Tailwind · Radix UI ·
@@ -118,17 +109,23 @@ TipTap 2 (notes) · Phosphor and Lucide icons · `uiohook-napi` global capture
 shortcuts · `pdfjs-dist`, `mammoth`, and `tesseract.js` for local document and
 OCR workflows · `react-force-graph-2d` for note maps · `ts-fsrs` for study
 scheduling · local JSON persistence in `src/main/services/store.ts` ·
-`imapflow` + `mailparser` for optional Gmail critical alerts · deterministic
-local rules by default.
+deterministic local rules by default.
 
 ## Development
 
 ```bash
 npm run typecheck
 npm test
+npm run rebuild:native
 npm run build
 npm start
 ```
+
+`npm install` runs `npm run rebuild:native` after dependencies install. That
+script rebuilds native modules, including the local `notch_helper.node` addon,
+for the Electron runtime. If the rebuild warning appears, install Xcode Command
+Line Tools with `xcode-select --install`, then run `npm run rebuild:native`
+manually.
 
 `npm start` builds the renderer and main process, applies the development
 rebrand script, and launches the actual Electron app. Use it when checking the

@@ -230,7 +230,7 @@ export class WindowManager {
   textarea::placeholder{color:rgba(255,255,255,0.30);font-style:italic}
 </style></head><body>
 <div class="card">
-  <div class="hdr"><span>📝 Quick capture</span><span class="hint">⌘↵ save · esc close</span></div>
+  <div class="hdr"><span>Quick capture</span><span class="hint">⌘↵ save · esc close</span></div>
   <textarea id="t" autofocus placeholder="What's on your mind?"></textarea>
 </div>
 <script>
@@ -333,10 +333,10 @@ export class WindowManager {
   createTray() {
     const icon = makeTrayIcon(1, '#ef4444');
     this.tray = new Tray(icon.resize({ width: 16, height: 16 }));
-    this.tray.setToolTip('Focus OS');
+    this.tray.setToolTip('StudyDesk');
     const menu = Menu.buildFromTemplate([
       { label: 'Show',  click: () => this.floatingWindow?.show() },
-      { label: 'Notes', click: () => this.openNotesWindow() },
+      { label: 'Open StudyDesk', click: () => this.openNotesWindow() },
       { type: 'separator' },
       { label: 'Quit',  click: () => app.quit() },
     ]);
@@ -360,7 +360,7 @@ export class WindowManager {
       }
       const m = Math.floor(remaining / 60);
       const s = remaining % 60;
-      this.tray.setToolTip(`Focus OS — ${m}:${s.toString().padStart(2, '0')} (${PHASE_LABELS[phase]})`);
+      this.tray.setToolTip(`StudyDesk — ${m}:${s.toString().padStart(2, '0')} (${PHASE_LABELS[phase]})`);
     } catch { /* ignore */ }
   }
 

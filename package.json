@@ -1,5 +1,5 @@
 {
-  "name": "focus-os",
+  "name": "studydesk",
   "version": "2.0.0",
   "description": "Local-first academic command center for students — courses, deadlines, capture, study, and critical alerts",
   "main": "dist/main/main/index.js",
@@ -8,7 +8,8 @@
     "build": "npm run build:renderer && npm run build:main",
     "build:renderer": "vite build",
     "build:main": "tsc -p tsconfig.main.json",
-    "postinstall": "echo 'no native rebuild needed'",
+    "postinstall": "npm run rebuild:native || echo '[warn] Native addon rebuild failed. Run npm run rebuild:native after installing Xcode Command Line Tools.'",
+    "rebuild:native": "electron-rebuild -f",
     "dist:mac": "npm run build && electron-builder --mac --dir",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "dev:renderer": "vite",

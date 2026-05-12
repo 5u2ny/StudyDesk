@@ -35,6 +35,7 @@ import { buildICS, defaultFilename } from './services/calendar/icsExport';
 import { generateQuiz, generateFlashcards, generateStudyNotes, summarizeContent, checkOllamaHealth } from './services/llm/generationService';
 import { randomUUID } from 'node:crypto';
 import { significantWords, calendarDay, hasWordOverlap } from './services/syllabus/dedup';
+import { allTextFromTipTapJson, parseTipTapJson } from '../shared/tiptap';
 
 // Stop words for auto-tag keyword extraction (module-level for readability)
 const AUTO_TAG_STOP_WORDS = new Set([
@@ -215,8 +216,7 @@ export function setupIPC() {
     }
 
     // Merge into existing TipTap JSON content
-    let content: any;
-    try { content = JSON.parse(note.content); } catch { content = { type: 'doc', content: [] }; }
+    const content = parseTipTapJson(note.content) ?? { type: 'doc', content: [] };
     if (!content.content) content.content = [];
     content.content.push(...newBlocks);
 
@@ -347,8 +347,7 @@ export function setupIPC() {
       filters: [{ name: 'PDF', extensions: ['pdf'] }],
     });
     if (result.canceled || !result.filePath) return null;
-    let doc: any;
-    try { doc = JSON.parse(note.content); } catch { doc = { type: 'doc', content: [] }; }
+    const doc = parseTipTapJson(note.content) ?? { type: 'doc', content: [] };
     const out = await exportNoteToPdf({ title: note.title || 'note', doc, outPath: result.filePath });
     return { written: true, path: out.path, bytes: out.bytes };
   });
@@ -388,8 +387,7 @@ export function setupIPC() {
       filters: [{ name: 'HTML', extensions: ['html'] }],
     });
     if (result.canceled || !result.filePath) return null;
-    let doc: any;
-    try { doc = JSON.parse(note.content); } catch { doc = { type: 'doc', content: [] }; }
+    const doc = parseTipTapJson(note.content) ?? { type: 'doc', content: [] };
     const html = buildRevealHtml({ title: note.title || 'Slides', doc });
     await fsp.writeFile(result.filePath, html, 'utf-8');
     return { written: true, path: result.filePath, bytes: Buffer.byteLength(html, 'utf-8') };
@@ -731,21 +729,8 @@ export function setupIPC() {
   ipcMain.handle('notes:autoTag', async (_e, req: { noteId: string }) => {
     const note = notesService.get(req.noteId);
     if (!note) throw new Error(`Note not found: ${req.noteId}`);
-    // Extract plain text from TipTap JSON
-    let text = '';
-    try {
-      const doc = JSON.parse(note.content);
-      const walk = (nodes: any[]) => {
-        for (const n of nodes) {
-          if (n.text) text += n.text + ' ';
-          if (n.content) walk(n.content);
-        }
-      };
-      if (doc.content) walk(doc.content);
-    } catch { text = note.title || ''; }
+    const text = allTextFromTipTapJson(note.content, note.title || '').slice(0, 8000);
     // Simple keyword extraction: word frequency minus stop words
-    // Truncate to first 8000 chars for large notes
-    text = text.slice(0, 8000);
     const words = text.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 3 && !AUTO_TAG_STOP_WORDS.has(w));
     const freq = new Map<string, number>();
     for (const w of words) freq.set(w, (freq.get(w) || 0) + 1);

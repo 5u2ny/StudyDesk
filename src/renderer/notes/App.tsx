@@ -22,6 +22,7 @@ import { CaptureInbox } from './components/CaptureInbox'
 import { selectPanicItems } from './lib/panicMode'
 import type { SearchHit } from './lib/searchIndex'
 import { routePaletteHit } from './lib/paletteRouter'
+import { parseTipTapJson, textFromTipTapJson, walkTipTapDoc } from '../../shared/tiptap'
 import {
   ShellContainer,
   IconRail,
@@ -150,29 +151,7 @@ const BLOCK_TYPES = new Set([
 ])
 
 function noteText(content: string): string {
-  try {
-    const json = JSON.parse(content)
-    const lines: string[] = []
-    const walkBlock = (node: any) => {
-      if (!node) return
-      if (BLOCK_TYPES.has(node.type)) {
-        const texts: string[] = []
-        const collectText = (n: any) => {
-          if (!n) return
-          if (typeof n.text === 'string') texts.push(n.text)
-          if (Array.isArray(n.content)) n.content.forEach(collectText)
-        }
-        collectText(node)
-        lines.push(texts.join(''))
-      } else if (Array.isArray(node.content)) {
-        node.content.forEach(walkBlock)
-      }
-    }
-    walkBlock(json)
-    return lines.join('\n').trim()
-  } catch {
-    return content
-  }
+  return textFromTipTapJson(content, { blockTypes: BLOCK_TYPES, fallback: content })
 }
 
 /** Count how many notes embed a sourceQuote pointing at the given path.
@@ -1965,15 +1944,13 @@ function DocumentWorkspace({
   // when the freshest source is older than 18 months.
   const sourceCoverage = useMemo(() => {
     if (!selected?.content) return { count: 0, freshestDays: null as number | null }
-    let json: any
-    try { json = JSON.parse(selected.content) } catch { return { count: 0, freshestDays: null } }
+    const json = parseTipTapJson(selected.content)
+    if (!json) return { count: 0, freshestDays: null }
     const paths = new Set<string>()
-    const walk = (node: any) => {
-      if (!node) return
-      if (node.type === 'sourceQuote' && node.attrs?.sourcePath) paths.add(node.attrs.sourcePath)
-      if (Array.isArray(node.content)) node.content.forEach(walk)
-    }
-    walk(json)
+    walkTipTapDoc(json, node => {
+      const sourcePath = node.attrs?.sourcePath
+      if (node.type === 'sourceQuote' && typeof sourcePath === 'string') paths.add(sourcePath)
+    })
     if (paths.size === 0) return { count: 0, freshestDays: null }
     // Look up freshness via course materialsImportedFiles
     let freshest = 0
@@ -1991,30 +1968,25 @@ function DocumentWorkspace({
   // is { id, text, quote } where quote is the underlying selected text.
   const inlineComments = useMemo(() => {
     if (!selected?.content) return [] as Array<{ id: string; text: string; quote: string }>
-    try {
-      const json = JSON.parse(selected.content)
-      const seen = new Set<string>()
-      const out: Array<{ id: string; text: string; quote: string }> = []
-      const walk = (node: any, parentText = '') => {
-        if (!node) return
-        // Marks live on text nodes
-        if (node.type === 'text' && Array.isArray(node.marks)) {
-          for (const m of node.marks) {
-            if (m?.type === 'inlineComment' && m.attrs?.commentId && !seen.has(m.attrs.commentId)) {
-              seen.add(m.attrs.commentId)
-              out.push({
-                id: m.attrs.commentId,
-                text: m.attrs.text ?? '',
-                quote: node.text ?? parentText,
-              })
-            }
+    const json = parseTipTapJson(selected.content)
+    if (!json) return []
+    const seen = new Set<string>()
+    const out: Array<{ id: string; text: string; quote: string }> = []
+    walkTipTapDoc(json, (node, parent) => {
+      if (node.type === 'text' && Array.isArray(node.marks)) {
+        for (const mark of node.marks) {
+          if (mark?.type === 'inlineComment' && mark.attrs?.commentId && !seen.has(String(mark.attrs.commentId))) {
+            seen.add(String(mark.attrs.commentId))
+            out.push({
+              id: String(mark.attrs.commentId),
+              text: typeof mark.attrs.text === 'string' ? mark.attrs.text : '',
+              quote: node.text ?? parent?.text ?? '',
+            })
           }
         }
-        if (Array.isArray(node.content)) node.content.forEach((c: any) => walk(c, node.text ?? parentText))
       }
-      walk(json)
-      return out
-    } catch { return [] }
+    })
+    return out
   }, [selected?.content])
 
   // Footnotes (MediaWiki port): collected in document order from the
@@ -2022,19 +1994,15 @@ function DocumentWorkspace({
   // CSS-counter superscript numbering inside the editor.
   const footnotes = useMemo(() => {
     if (!selected?.content) return [] as string[]
-    try {
-      const json = JSON.parse(selected.content)
-      const out: string[] = []
-      const walk = (node: any) => {
-        if (!node) return
-        if (node.type === 'footnote' && typeof node.attrs?.content === 'string') {
-          out.push(node.attrs.content)
-        }
-        if (Array.isArray(node.content)) node.content.forEach(walk)
+    const json = parseTipTapJson(selected.content)
+    if (!json) return []
+    const out: string[] = []
+    walkTipTapDoc(json, node => {
+      if (node.type === 'footnote' && typeof node.attrs?.content === 'string') {
+        out.push(node.attrs.content)
       }
-      walk(json)
-      return out
-    } catch { return [] }
+    })
+    return out
   }, [selected?.content])
 
   const createSubpage = useCallback(async () => {
@@ -3666,4 +3634,3 @@ function RiverNoteCard({ note, onOpen, onClose }: { note: Note; onOpen: () => vo
 function formatDue(value: number) {
   return new Date(value).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
-

@@ -7,6 +7,7 @@
 // that's cheap enough that we don't bother memoizing per-issue.
 
 import type { Note } from '@schema'
+import { allTextFromTipTapJson, parseTipTapJson, walkTipTapDoc } from '../../../shared/tiptap'
 
 export type LintSeverity = 'warn' | 'info'
 
@@ -109,45 +110,26 @@ export function lintNotes(notes: Note[], opts: LintOptions = {}): LintIssue[] {
 /** Returns true when the TipTap content has no meaningful text. */
 export function isEmptyContent(content: string): boolean {
   if (!content || !content.trim()) return true
-  // Quick check: any text content at all?
-  try {
-    const json = JSON.parse(content)
-    return !hasAnyText(json)
-  } catch {
-    // Not JSON — treat the raw string as content; non-empty means non-empty
-    return !content.trim()
-  }
-}
-
-function hasAnyText(node: any): boolean {
-  if (!node) return false
-  if (node.type === 'text' && typeof node.text === 'string' && node.text.trim()) return true
-  if (Array.isArray(node.content)) return node.content.some(hasAnyText)
-  return false
+  // Not JSON: treat the raw string as content; non-empty means non-empty.
+  return !allTextFromTipTapJson(content, content).trim()
 }
 
 /** Walk the TipTap JSON for noteLink marks whose noteId isn't in the
  *  known set. Returns the set of orphan ids found. */
 export function findOrphanNoteLinks(content: string, knownIds: Set<string>): string[] {
   if (!content) return []
-  // Cheap fast path: regex over serialized JSON. The full walk is only
-  // needed for deduplication.
-  const ids = new Set<string>()
-  try {
-    const json = JSON.parse(content)
-    walkForNoteLinks(json, ids)
-  } catch { return [] }
-  return Array.from(ids).filter(id => !knownIds.has(id))
-}
+  const json = parseTipTapJson(content)
+  if (!json) return []
 
-function walkForNoteLinks(node: any, out: Set<string>) {
-  if (!node) return
-  if (node.type === 'text' && Array.isArray(node.marks)) {
-    for (const m of node.marks) {
-      if (m?.type === 'noteLink' && m.attrs?.noteId) out.add(m.attrs.noteId)
+  const ids = new Set<string>()
+  walkTipTapDoc(json, node => {
+    if (node.type !== 'text' || !Array.isArray(node.marks)) return
+    for (const mark of node.marks) {
+      const noteId = mark?.type === 'noteLink' ? mark.attrs?.noteId : undefined
+      if (typeof noteId === 'string') ids.add(noteId)
     }
-  }
-  if (Array.isArray(node.content)) node.content.forEach((c: any) => walkForNoteLinks(c, out))
+  })
+  return Array.from(ids).filter(id => !knownIds.has(id))
 }
 
 export function summarizeIssues(issues: LintIssue[]): {

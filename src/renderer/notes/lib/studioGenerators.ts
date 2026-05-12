@@ -13,6 +13,7 @@
 // own words stay the user's own words.
 
 import type { Note } from '@schema'
+import { parseTipTapJson, textOfTipTapNode, walkTipTapDoc, type TipTapNode } from '../../../shared/tiptap'
 
 export interface BriefSection {
   noteId: string
@@ -78,28 +79,26 @@ export function buildStudyGuide(notes: ReadonlyArray<Note>): StudyGuideEntry[] {
 // ───────────────────────────────────────────────────────────────────
 
 function extractH1s(content: string): string[] {
-  if (!content) return []
-  let doc: any
-  try { doc = JSON.parse(content) } catch { return [] }
+  const doc = parseTipTapJson(content)
+  if (!doc) return []
   const out: string[] = []
   // Recursive walk so headings inside bulletList / blockquote / details
   // are still discovered (review I2 — the previous top-level loop
   // missed nested cases). Document order preserved.
-  for (const node of flattenInDocOrder(doc)) {
+  walkTipTapDoc(doc, node => {
     if (node?.type === 'heading' && node.attrs?.level === 1) {
-      const text = textOf(node).trim()
+      const text = textOfTipTapNode(node).trim()
       if (text) out.push(text)
     }
-  }
+  })
   return out
 }
 
 function extractHeadingsWithFollowingSentence(
   content: string,
 ): Array<{ heading: string; level: 2 | 3; firstSentence: string }> {
-  if (!content) return []
-  let doc: any
-  try { doc = JSON.parse(content) } catch { return [] }
+  const doc = parseTipTapJson(content)
+  if (!doc) return []
   // Flatten the document into a stream of leaf-y blocks
   // (heading + paragraph) in document order. Then pair each H2/H3
   // with the next paragraph that follows it, stopping at the next
@@ -107,19 +106,19 @@ function extractHeadingsWithFollowingSentence(
   // (review I2): nested headings inside lists/blockquotes are now
   // discovered, and we still skip irrelevant block types like
   // images / codeBlocks when looking for the summary paragraph.
-  const stream: any[] = []
-  for (const node of flattenInDocOrder(doc)) {
+  const stream: TipTapNode[] = []
+  walkTipTapDoc(doc, node => {
     if (node?.type === 'heading' || node?.type === 'paragraph') {
       stream.push(node)
     }
-  }
+  })
   const out: Array<{ heading: string; level: 2 | 3; firstSentence: string }> = []
   for (let i = 0; i < stream.length; i++) {
     const b = stream[i]
     if (b.type !== 'heading') continue
     const lvl = b.attrs?.level
     if (lvl !== 2 && lvl !== 3) continue
-    const heading = textOf(b).trim()
+    const heading = textOfTipTapNode(b).trim()
     if (!heading) continue
     let firstSentence = ''
     // Walk forward up to 5 stream nodes for the first paragraph,
@@ -128,33 +127,13 @@ function extractHeadingsWithFollowingSentence(
       const bb = stream[j]
       if (bb.type === 'heading') break
       if (bb.type === 'paragraph') {
-        const t = textOf(bb).trim()
+        const t = textOfTipTapNode(bb).trim()
         if (t) { firstSentence = firstSentenceOf(t); break }
       }
     }
     out.push({ heading, level: lvl as 2 | 3, firstSentence })
   }
   return out
-}
-
-/** Pre-order traversal of a TipTap document, yielding every node. The
- *  key win over the previous top-level loop: we descend into containers
- *  like bulletList / orderedList / blockquote / details / listItem so
- *  headings nested inside them are visible to the generators. */
-function* flattenInDocOrder(node: any): Generator<any> {
-  if (!node) return
-  if (typeof node === 'object' && node.type) yield node
-  for (const child of asArray(node?.content)) {
-    yield* flattenInDocOrder(child)
-  }
-}
-
-function asArray(x: any): any[] { return Array.isArray(x) ? x : [] }
-
-function textOf(node: any): string {
-  if (!node) return ''
-  if (typeof node.text === 'string') return node.text
-  return asArray(node.content).map(textOf).join('')
 }
 
 /** First-sentence extractor that doesn't break on common abbreviations

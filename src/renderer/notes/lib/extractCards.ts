@@ -14,6 +14,8 @@
 // AI-as-draft, not AI-as-final. (Actually no AI here at all — pure
 // heading + first-sentence extraction. Deterministic.)
 
+import { parseTipTapJson } from '../../../shared/tiptap'
+
 export interface CardCandidate {
   /** Stable across sessions for a given (front + position) pair. */
   cardKey: string
@@ -42,8 +44,7 @@ export function extractCardCandidates(
   noteContent: string,
   headingLevel: number = DEFAULT_HEADING_LEVEL,
 ): CardCandidate[] {
-  let doc: any
-  try { doc = JSON.parse(noteContent) } catch { return [] }
+  const doc = parseTipTapJson(noteContent)
   if (!doc?.content || !Array.isArray(doc.content)) return []
 
   const candidates: CardCandidate[] = []
@@ -68,7 +69,7 @@ export function extractCardCandidates(
 
   for (const node of doc.content) {
     const isHeading = node.type === 'heading'
-    const level: number | undefined = node.attrs?.level
+    const level = typeof node.attrs?.level === 'number' ? node.attrs.level : undefined
     if (isHeading && level !== undefined && level <= headingLevel) {
       closeActive()
       if (level === headingLevel) {

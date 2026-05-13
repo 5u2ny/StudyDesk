@@ -1,5 +1,6 @@
 import { ipcMain, screen, dialog, shell } from 'electron';
 import { promises as fsp } from 'node:fs';
+import path from 'node:path';
 import { IPC } from '../renderer/shared/types';
 import type { AppSettings } from '../renderer/shared/types';
 import { stateStore } from './stateStore';
@@ -26,6 +27,7 @@ import { criticalEmailService } from './services/gmail/criticalEmailService';
 import { todayService } from './services/today/todayService';
 import { attentionAlertService } from './services/attention/attentionAlertService';
 import { folderWatcherService } from './services/folders/folderWatcherService';
+import { isManagedMaterialPath, storeUploadedCourseMaterial, type StoreUploadedFileRequest } from './services/materials/materialStorageService';
 import { revisionsService } from './services/revisions/revisionsService';
 import { exportNoteToPdf } from './services/export/pdfExport';
 import { buildRevealHtml } from './services/export/slideExport';
@@ -50,6 +52,19 @@ const AUTO_TAG_STOP_WORDS = new Set([
 ]);
 
 let timerEngine: TimerEngine;
+
+function isPathInside(parent: string, candidate: string): boolean {
+  const relative = path.relative(path.resolve(parent), path.resolve(candidate));
+  return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function isAllowedMaterialSourcePath(candidatePath: string): boolean {
+  if (isManagedMaterialPath(candidatePath)) return true;
+  const courses = coursesService.list();
+  return courses.some(c =>
+    c.materialsFolderPath && isPathInside(c.materialsFolderPath, candidatePath)
+  );
+}
 
 export function setupIPC() {
   timerEngine = new TimerEngine(stateStore.getSnapshot().settings);
@@ -307,19 +322,26 @@ export function setupIPC() {
     return updated;
   });
 
-  // Read a file's bytes for the renderer (used by folder watcher import flow).
-  // Restricted to files inside an active course's materials folder to prevent
-  // arbitrary filesystem reads from a compromised renderer.
+  // Read a file's bytes for the renderer (used by folder watcher import flow
+  // and app-managed direct upload previews). Restricted to course material
+  // source paths to prevent arbitrary filesystem reads from a compromised renderer.
   ipcMain.handle('folder:readFile', async (_e, r: { path: string }) => {
-    const courses = coursesService.list();
-    const allowed = courses.some(c =>
-      c.materialsFolderPath && r.path.startsWith(c.materialsFolderPath)
-    );
-    if (!allowed) {
-      throw new Error('Path not inside any configured course materials folder');
+    if (!isAllowedMaterialSourcePath(r.path)) {
+      throw new Error('Path not inside an authorized course materials location');
     }
     const buf = await fsp.readFile(r.path);
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  });
+
+  // Store an original file uploaded directly through the renderer into
+  // StudyDesk-managed course material storage. Renderer wiring is separate:
+  // this IPC only makes the backend capable of preserving originals.
+  ipcMain.handle('materials:storeUploadedFile', async (_e, r: StoreUploadedFileRequest) => {
+    const course = coursesService.get(r.courseId);
+    if (!course) throw new Error('Course not found');
+    const record = await storeUploadedCourseMaterial(r);
+    folderWatcherService.recordImport(r.courseId, record);
+    return record;
   });
 
   // Renderer reports completion of an auto-import so the file isn't re-imported next scan.
@@ -411,12 +433,8 @@ export function setupIPC() {
   });
 
   ipcMain.handle('shell:openSourceFile', async (_e, r: { path: string; page?: number; timestamp?: string }) => {
-    const courses = coursesService.list();
-    const allowed = courses.some(c =>
-      c.materialsFolderPath && r.path.startsWith(c.materialsFolderPath)
-    );
-    if (!allowed) {
-      throw new Error('Path not inside any configured course materials folder');
+    if (!isAllowedMaterialSourcePath(r.path)) {
+      throw new Error('Path not inside an authorized course materials location');
     }
     // T6: best-effort page/timestamp anchors. macOS Preview accepts
     // file://...#page=N via shell.openExternal but flakily; we try

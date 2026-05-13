@@ -89,6 +89,13 @@ export interface MaterialsImportRecord {
   mtime: number;       // file modification time (used for dedup)
   size: number;        // file size in bytes
   importedAt: number;  // when StudyDesk imported it
+  courseId?: string;   // course that owns this material
+  originalFilename?: string;
+  storedPath?: string; // app-managed copy path for direct uploads
+  mime?: string;
+  extension?: string;
+  materialCategory?: string;
+  sourceKind?: 'watched_folder' | 'direct_upload';
   noteId?: string;     // resulting note (undefined if extraction failed)
   error?: string;      // last error message if import failed
 }

@@ -8,6 +8,7 @@ import type {
   Course,
   CriticalEmailAlert,
   EmailDigestItem,
+  MaterialsImportRecord,
   Note,
   StudyItem,
   Todo,
@@ -49,6 +50,18 @@ export interface IPCContracts {
   'course:get': { req: { id: string }; res: Course | undefined };
   'course:pickMaterialsFolder': { req: { courseId: string }; res: Course | null };
   'course:clearMaterialsFolder': { req: { courseId: string }; res: Course };
+  'materials:storeUploadedFile': {
+    req: {
+      courseId: string;
+      noteId?: string;
+      filename: string;
+      mime?: string;
+      extension?: string;
+      materialCategory?: string;
+      bytes: ArrayBuffer | Uint8Array | number[];
+    };
+    res: MaterialsImportRecord;
+  };
   'folder:readFile': { req: { path: string }; res: ArrayBuffer };
   'folder:recordImport': { req: { courseId: string; record: any }; res: boolean };
   'folder:rescan': { req: undefined; res: boolean };

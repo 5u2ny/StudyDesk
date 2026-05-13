@@ -50,6 +50,7 @@ const INVOKE_CHANNELS = new Set([
   // Course materials folder watcher
   'course:pickMaterialsFolder',
   'course:clearMaterialsFolder',
+  'materials:storeUploadedFile',
   'folder:readFile',
   'folder:recordImport',
   'folder:rescan',

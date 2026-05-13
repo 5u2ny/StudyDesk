@@ -51,6 +51,7 @@ function normalizeSyllabusText(text: string): string {
     .replace(/\s+/g, ' ')
     .replace(/\b(\d)\s+(\d)\b/g, '$1$2')
     .replace(/\b(20)\s+(\d{2})\b/g, '$1$2')
+    .replace(/\b([A-Za-z]+)\s+-\s+([A-Za-z]+)\b/g, '$1-$2')
     .replace(/\b([A-Za-z]+)\s+(\d{1,2})\s*,\s*(\d{1,2})\b/g, '$1 $2, $3')
     .replace(/\b([A-Za-z]+)\s+(\d{1,2})\s*,\s*([A-Za-z]+)\s+(\d{1,2})\b/g, '$1 $2, $3 $4')
     .trim()

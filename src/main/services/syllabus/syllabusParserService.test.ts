@@ -148,7 +148,7 @@ Component Percent
 Individual Level – 60%
 Class Participation 5 %
 Homework 10%
-In-class Quizzes 15 %
+In - class Quizzes 15 %
 Final Exam (May 7) 30%
 Team Level – 40%
 Team Presentations (Week 6, Week 15) 20%

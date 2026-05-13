@@ -23,7 +23,12 @@ import { selectPanicItems } from './lib/panicMode'
 import type { SearchHit } from './lib/searchIndex'
 import { routePaletteHit } from './lib/paletteRouter'
 import { parseTipTapJson, textFromTipTapJson, walkTipTapDoc } from '../../shared/tiptap'
-import { extractSyllabusScheduleRows, type SyllabusScheduleRow } from '../../shared/syllabusSchedule'
+import {
+  extractSyllabusGradingComponents,
+  extractSyllabusScheduleRows,
+  type SyllabusGradingComponent,
+  type SyllabusScheduleRow,
+} from '../../shared/syllabusSchedule'
 import {
   ShellContainer,
   IconRail,
@@ -136,7 +141,7 @@ interface QuizQuestionDraft {
 // (dashboard / quiz / assignment / syllabus / map / timeline) remain
 // reachable via the "More" overflow menu and direct activeTool calls.
 // Visible-in-tab-strip set is enforced in `tools` below.
-type WorkspaceTool = 'today' | 'daily' | 'notes' | 'calendar' | 'deadlines' | 'flashcards' | 'materials' | 'class'
+type WorkspaceTool = 'today' | 'daily' | 'notes' | 'calendar' | 'grades' | 'deadlines' | 'flashcards' | 'materials' | 'class'
                    | 'dashboard' | 'quiz' | 'assignment' | 'syllabus' | 'map' | 'timeline'
 type QuickAddKind = 'course' | 'deadline' | 'note' | 'assignment' | 'syllabus' | 'study' | 'question'
 
@@ -787,6 +792,7 @@ export default function App() {
     { id: 'today',      label: 'Today',     icon: <PanelTop size={14} /> },
     { id: 'notes',      label: 'Notes',     icon: <FileText size={14} /> },
     { id: 'calendar',   label: 'Calendar',  icon: <CalendarDays size={14} /> },
+    { id: 'grades',     label: 'Grades',    icon: <BarChart3 size={14} /> },
     { id: 'deadlines',  label: 'Deadlines', icon: <Clock3 size={14} /> },
     { id: 'map',        label: 'Map',       icon: <Network size={14} /> },
   ]
@@ -1660,6 +1666,8 @@ function WorkspaceSurface({
       return <DailyJournalView notes={notes} currentCourse={currentCourse} onUpdate={onUpdate} onRefresh={onRefresh} onSelect={onSelect} />
     case 'calendar':
       return <CourseCalendarView currentCourse={currentCourse} notes={notes} deadlines={deadlines} assignments={assignments} alerts={alerts} />
+    case 'grades':
+      return <GradeManagementView currentCourse={currentCourse} notes={notes} assignments={assignments} />
     case 'deadlines':
       // Ticket 1.1: full-width deadlines list. View toggle for Timeline
       // is rendered inline by DeadlinesView so the user can swap layouts.
@@ -1687,6 +1695,280 @@ function WorkspaceSurface({
     default:
       return <DocumentWorkspace selected={selected} selectedText={selectedText} captures={captures} notes={notes} courses={courses} studyItems={studyItems} riverIds={riverIds} currentCourse={currentCourse} linkedAssignment={linkedAssignment} onUpdate={onUpdate} onDelete={onDelete} onCreate={onCreate} onCreateFromFile={onCreateFromFile} onRefresh={onRefresh} onSelect={onSelect} onAddToRiver={onAddToRiver} onRemoveFromRiver={onRemoveFromRiver} onStatus={onStatus} />
   }
+}
+
+// ── Grade Management tab ───────────────────────────────────────────────────
+// Renderer-only first pass: syllabus weights + manual what-if scoring. This
+// avoids a store/schema migration until the product shape proves itself.
+interface GradeEntry {
+  score: string
+  possible: string
+}
+
+interface GradebookDraft {
+  target: string
+  entries: Record<string, GradeEntry>
+}
+
+const DEFAULT_GRADEBOOK: GradebookDraft = { target: '90', entries: {} }
+
+function GradeManagementView({
+  currentCourse,
+  notes,
+  assignments,
+}: {
+  currentCourse?: Course
+  notes: Note[]
+  assignments: Assignment[]
+}) {
+  const storageKey = `studydesk.gradebook.${currentCourse?.id ?? 'none'}`
+  const syllabusNote = currentCourse
+    ? notes
+      .filter(n => n.courseId === currentCourse.id && n.documentType === 'syllabus')
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0]
+    : undefined
+  const syllabusText = syllabusNote ? noteText(syllabusNote.content) : ''
+  const extractedComponents = syllabusText ? extractSyllabusGradingComponents(syllabusText) : []
+  const components = normalizeGradeComponents(extractedComponents)
+
+  const [draft, setDraft] = useState<GradebookDraft>(() => loadGradebookDraft(storageKey))
+
+  useEffect(() => {
+    setDraft(loadGradebookDraft(storageKey))
+  }, [storageKey])
+
+  useEffect(() => {
+    if (!currentCourse) return
+    localStorage.setItem(storageKey, JSON.stringify(draft))
+  }, [currentCourse, draft, storageKey])
+
+  if (!currentCourse) {
+    return (
+      <section className="phase3-card">
+        <header className="phase3-header">
+          <div>
+            <p className="phase3-eyebrow">Grade Management</p>
+            <h1>Pick a course</h1>
+            <span>Select a course with an imported syllabus to calculate grade progress and what-if targets.</span>
+          </div>
+        </header>
+      </section>
+    )
+  }
+
+  const target = clampPercent(Number.parseFloat(draft.target) || 0)
+  const rows = components.map(component => {
+    const entry = draft.entries[component.key] ?? { score: '', possible: '100' }
+    const score = Number.parseFloat(entry.score)
+    const possible = Number.parseFloat(entry.possible)
+    const hasScore = Number.isFinite(score) && Number.isFinite(possible) && possible > 0
+    const percent = hasScore ? clampPercent((score / possible) * 100) : undefined
+    const weightedEarned = percent === undefined ? 0 : component.weight * (percent / 100)
+    return { ...component, entry, hasScore, percent, weightedEarned }
+  })
+
+  const totalWeight = rows.reduce((sum, row) => sum + row.weight, 0)
+  const gradedWeight = rows.reduce((sum, row) => sum + (row.hasScore ? row.weight : 0), 0)
+  const remainingWeight = Math.max(0, totalWeight - gradedWeight)
+  const earnedWeighted = rows.reduce((sum, row) => sum + row.weightedEarned, 0)
+  const currentAverage = gradedWeight > 0 ? (earnedWeighted / gradedWeight) * 100 : undefined
+  const projectedWeighted = earnedWeighted + (remainingWeight * ((currentAverage ?? target) / 100))
+  const projectedFinal = totalWeight > 0 ? (projectedWeighted / totalWeight) * 100 : 0
+  const targetWeighted = totalWeight * (target / 100)
+  const neededOnRemaining = remainingWeight > 0 ? ((targetWeighted - earnedWeighted) / remainingWeight) * 100 : undefined
+  const courseAssignments = assignments.filter(a => a.courseId === currentCourse.id && a.status !== 'archived')
+  const recommendations = gradeFocusRecommendations(rows, target, neededOnRemaining)
+
+  function updateEntry(key: string, patch: Partial<GradeEntry>) {
+    setDraft(prev => ({
+      ...prev,
+      entries: {
+        ...prev.entries,
+        [key]: { ...(prev.entries[key] ?? { score: '', possible: '100' }), ...patch },
+      },
+    }))
+  }
+
+  return (
+    <section className="phase3-card gradebook-view">
+      <header className="phase3-header gradebook-header">
+        <div>
+          <p className="phase3-eyebrow">Grade Management</p>
+          <h1>{currentCourse.code ?? currentCourse.name}</h1>
+          <span>
+            {components.length > 0
+              ? `${components.length} syllabus grading component${components.length === 1 ? '' : 's'} · ${formatGradePercent(totalWeight)} total weight`
+              : 'No syllabus grading components captured yet.'}
+          </span>
+        </div>
+        <div className="gradebook-target">
+          <label htmlFor="target-grade">Target grade</label>
+          <div>
+            <input
+              id="target-grade"
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              value={draft.target}
+              onChange={e => setDraft(prev => ({ ...prev, target: e.target.value }))}
+            />
+            <span>%</span>
+          </div>
+        </div>
+      </header>
+
+      {components.length === 0 ? (
+        <div className="gradebook-empty">
+          <BarChart3 size={22} />
+          <strong>No grade weights found</strong>
+          <span>Import a syllabus with a grading section to start the grade calculator.</span>
+        </div>
+      ) : (
+        <div className="gradebook-grid">
+          <section className="phase3-panel gradebook-components">
+            <h2>Grade components</h2>
+            <div className="gradebook-component-list">
+              {rows.map(row => (
+                <article key={row.key} className="gradebook-component">
+                  <div>
+                    <strong>{row.title}</strong>
+                    <span>{formatGradePercent(row.weight)} of final grade</span>
+                  </div>
+                  <label>
+                    Score
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={row.entry.score}
+                      onChange={e => updateEntry(row.key, { score: e.target.value })}
+                      placeholder="--"
+                    />
+                  </label>
+                  <label>
+                    Out of
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={row.entry.possible}
+                      onChange={e => updateEntry(row.key, { possible: e.target.value })}
+                    />
+                  </label>
+                  <output>{row.percent === undefined ? 'Not entered' : `${formatGradePercent(row.percent)}% earned`}</output>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="phase3-panel gradebook-summary">
+            <h2>What-if calculator</h2>
+            <div className="gradebook-metrics">
+              <GradeMetric label="Current average" value={currentAverage === undefined ? '--' : `${formatGradePercent(currentAverage)}%`} />
+              <GradeMetric label="Weighted earned" value={`${formatGradePercent(earnedWeighted)} / ${formatGradePercent(totalWeight)}`} />
+              <GradeMetric label="Projected final" value={`${formatGradePercent(projectedFinal)}%`} />
+              <GradeMetric label="Needed on remaining" value={neededOnRemaining === undefined ? 'Complete' : `${formatGradePercent(neededOnRemaining)}%`} warn={neededOnRemaining !== undefined && neededOnRemaining > 100} />
+            </div>
+
+            <div className="gradebook-progress" aria-label="Weighted grade progress">
+              <span style={{ width: `${Math.min(100, (earnedWeighted / Math.max(totalWeight, 1)) * 100)}%` }} />
+            </div>
+            <p>
+              {remainingWeight > 0
+                ? `${formatGradePercent(remainingWeight)}% of the course is still unscored.`
+                : 'All weighted components have manual scores.'}
+            </p>
+          </section>
+
+          <section className="phase3-panel gradebook-focus">
+            <h2>Focus recommendations</h2>
+            {recommendations.length === 0 ? (
+              <CourseCalendarEmpty text="Enter scores to generate focus recommendations." />
+            ) : (
+              <ul>
+                {recommendations.map(item => <li key={item}>{item}</li>)}
+              </ul>
+            )}
+          </section>
+
+          <section className="phase3-panel gradebook-context">
+            <h2>Course context</h2>
+            <div className="gradebook-context-list">
+              <span><GraduationCap size={13} /> {currentCourse.professorName ?? 'Instructor not captured'}</span>
+              <span><CalendarDays size={13} /> {currentCourse.term ?? 'Term not captured'}</span>
+              <span><ClipboardList size={13} /> {courseAssignments.length} active assignment{courseAssignments.length === 1 ? '' : 's'}</span>
+              <span><BookOpen size={13} /> {syllabusNote ? syllabusNote.title : 'No syllabus source note'}</span>
+            </div>
+          </section>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function GradeMetric({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
+  return (
+    <div className={cn('gradebook-metric', warn && 'gradebook-metric-warn')}>
+      <strong>{value}</strong>
+      <span>{label}</span>
+    </div>
+  )
+}
+
+function loadGradebookDraft(storageKey: string): GradebookDraft {
+  try {
+    const raw = localStorage.getItem(storageKey)
+    if (!raw) return DEFAULT_GRADEBOOK
+    const parsed = JSON.parse(raw) as Partial<GradebookDraft>
+    return {
+      target: typeof parsed.target === 'string' ? parsed.target : DEFAULT_GRADEBOOK.target,
+      entries: parsed.entries && typeof parsed.entries === 'object' ? parsed.entries : {},
+    }
+  } catch {
+    return DEFAULT_GRADEBOOK
+  }
+}
+
+function normalizeGradeComponents(components: SyllabusGradingComponent[]) {
+  return components.map(component => ({
+    key: component.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+    title: component.title,
+    weight: Number.parseFloat(component.weight),
+  })).filter(component => component.key && Number.isFinite(component.weight) && component.weight > 0)
+}
+
+function clampPercent(value: number) {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(100, Math.max(0, value))
+}
+
+function formatGradePercent(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1)
+}
+
+function gradeFocusRecommendations(
+  rows: Array<ReturnType<typeof normalizeGradeComponents>[number] & { hasScore: boolean; percent?: number }>,
+  target: number,
+  neededOnRemaining?: number
+) {
+  const recommendations: string[] = []
+  const unscored = rows.filter(row => !row.hasScore).sort((a, b) => b.weight - a.weight)
+  if (unscored[0]) recommendations.push(`Prioritize ${unscored[0].title}; it still controls ${formatGradePercent(unscored[0].weight)}% of the final grade.`)
+  if (unscored[1]) recommendations.push(`Next highest open lever: ${unscored[1].title} at ${formatGradePercent(unscored[1].weight)}%.`)
+
+  const belowTarget = rows
+    .filter(row => row.hasScore && row.percent !== undefined && row.percent < target)
+    .sort((a, b) => ((target - (b.percent ?? 0)) * b.weight) - ((target - (a.percent ?? 0)) * a.weight))
+  if (belowTarget[0]) recommendations.push(`${belowTarget[0].title} is below target; improving it has the largest scored-component impact.`)
+
+  if (neededOnRemaining !== undefined) {
+    if (neededOnRemaining > 100) recommendations.push('The current target is mathematically out of reach without extra credit or changed weights.')
+    else if (neededOnRemaining >= 90) recommendations.push(`Remaining work needs about ${formatGradePercent(neededOnRemaining)}% on average, so focus on high-weight components first.`)
+    else recommendations.push(`Target is reachable with about ${formatGradePercent(neededOnRemaining)}% average on remaining work.`)
+  }
+
+  return recommendations.slice(0, 4)
 }
 
 // ── Deadlines tab ─────────────────────────────────────────────────────────

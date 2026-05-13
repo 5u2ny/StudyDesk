@@ -2955,6 +2955,120 @@ body {
   overflow: hidden;
 }
 
+.course-calendar-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(260px, 0.75fr);
+  grid-auto-rows: minmax(190px, auto);
+  gap: 14px;
+  padding: 14px 24px 24px;
+  overflow: hidden auto;
+}
+
+.course-calendar-meta {
+  width: min(320px, 36vw);
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid var(--sd-line);
+  border-radius: 12px;
+  background: var(--sd-ink-1);
+}
+
+.course-calendar-meta span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  color: var(--sd-fg-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.course-calendar-main {
+  grid-row: span 2;
+}
+
+.course-calendar-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--sd-line);
+}
+
+.course-calendar-row > span {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: #287bff;
+  background: rgba(40, 123, 255, 0.12);
+}
+
+.course-calendar-row-urgent > span {
+  color: var(--sd-warn);
+  background: var(--sd-warn-soft);
+}
+
+.course-calendar-row strong {
+  display: block;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 820;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--sd-fg-1);
+}
+
+.course-calendar-row em {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--sd-fg-3);
+  font-size: 12px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.course-calendar-row small {
+  max-width: 120px;
+  padding: 5px 9px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--sd-ink-2);
+  color: var(--sd-fg-3);
+  font-size: 11px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.course-calendar-row-urgent small {
+  background: var(--sd-warn-soft);
+  color: var(--sd-warn);
+}
+
+.course-calendar-empty {
+  min-height: 92px;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  border: 1px dashed var(--sd-line-strong);
+  border-radius: 12px;
+  color: var(--sd-fg-3);
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+}
+
 .phase3-panel {
   min-width: 0;
   min-height: 0;
@@ -3180,7 +3294,8 @@ body {
   .flashcard-board,
   .dashboard-grid,
   .syllabus-grid,
-  .class-grid {
+  .class-grid,
+  .course-calendar-grid {
     grid-template-columns: 1fr;
   }
 }

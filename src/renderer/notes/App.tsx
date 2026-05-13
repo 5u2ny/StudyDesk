@@ -135,7 +135,7 @@ interface QuizQuestionDraft {
 // (dashboard / quiz / assignment / syllabus / map / timeline) remain
 // reachable via the "More" overflow menu and direct activeTool calls.
 // Visible-in-tab-strip set is enforced in `tools` below.
-type WorkspaceTool = 'today' | 'daily' | 'notes' | 'deadlines' | 'flashcards' | 'materials' | 'class'
+type WorkspaceTool = 'today' | 'daily' | 'notes' | 'calendar' | 'deadlines' | 'flashcards' | 'materials' | 'class'
                    | 'dashboard' | 'quiz' | 'assignment' | 'syllabus' | 'map' | 'timeline'
 type QuickAddKind = 'course' | 'deadline' | 'note' | 'assignment' | 'syllabus' | 'study' | 'question'
 
@@ -279,7 +279,7 @@ function defaultQuickAddForm(kind: QuickAddKind, selectedText = ''): QuickAddFor
   }
 }
 
-const ALL_TOOLS = ['today', 'daily', 'notes', 'deadlines', 'flashcards', 'materials', 'class', 'dashboard', 'quiz', 'assignment', 'syllabus', 'map', 'timeline'] as const
+const ALL_TOOLS = ['today', 'daily', 'notes', 'calendar', 'deadlines', 'flashcards', 'materials', 'class', 'dashboard', 'quiz', 'assignment', 'syllabus', 'map', 'timeline'] as const
 
 function initialWorkspaceTool(): WorkspaceTool {
   const tool = new URLSearchParams(window.location.search).get('tool')
@@ -785,6 +785,7 @@ export default function App() {
   const tools: Array<{ id: WorkspaceTool; label: string; icon: React.ReactNode }> = [
     { id: 'today',      label: 'Today',     icon: <PanelTop size={14} /> },
     { id: 'notes',      label: 'Notes',     icon: <FileText size={14} /> },
+    { id: 'calendar',   label: 'Calendar',  icon: <CalendarDays size={14} /> },
     { id: 'deadlines',  label: 'Deadlines', icon: <Clock3 size={14} /> },
     { id: 'map',        label: 'Map',       icon: <Network size={14} /> },
   ]
@@ -1619,7 +1620,7 @@ function WorkspaceSurface({
   assignments: Assignment[]
   studyItems: StudyItem[]
   confusions: ConfusionItem[]
-  alerts: Pick<AttentionAlert, 'id' | 'title' | 'reason' | 'priority'>[]
+  alerts: AttentionAlert[]
   classSessions: ClassSession[]
   currentCourse?: Course
   linkedAssignment?: Assignment
@@ -1656,6 +1657,8 @@ function WorkspaceSurface({
       return <NotesListView notes={notes} currentCourse={currentCourse} onSelect={(n) => { onSelect(n); onNavigate('today') }} onCreate={onCreate} />
     case 'daily':
       return <DailyJournalView notes={notes} currentCourse={currentCourse} onUpdate={onUpdate} onRefresh={onRefresh} onSelect={onSelect} />
+    case 'calendar':
+      return <CourseCalendarView currentCourse={currentCourse} deadlines={deadlines} assignments={assignments} alerts={alerts} />
     case 'deadlines':
       // Ticket 1.1: full-width deadlines list. View toggle for Timeline
       // is rendered inline by DeadlinesView so the user can swap layouts.
@@ -1783,6 +1786,242 @@ function DeadlinesView({
   )
 }
 
+// ── Course Calendar tab ────────────────────────────────────────────────────
+// Renderer-only view over existing course, deadline, assignment, and alert data.
+function CourseCalendarView({
+  currentCourse,
+  deadlines,
+  assignments,
+  alerts,
+}: {
+  currentCourse?: Course
+  deadlines: AcademicDeadline[]
+  assignments: Assignment[]
+  alerts: AttentionAlert[]
+}) {
+  if (!currentCourse) {
+    return (
+      <section className="phase3-card">
+        <header className="phase3-header">
+          <div>
+            <p className="phase3-eyebrow">Course Calendar</p>
+            <h1>Pick a course</h1>
+            <span>Import or select a course to see upcoming work, readings, and preparation tasks.</span>
+          </div>
+        </header>
+      </section>
+    )
+  }
+
+  const activeAssignments = assignments
+    .filter(a => a.status !== 'archived' && a.status !== 'submitted')
+    .sort((a, b) => (a.dueDate ?? Number.MAX_SAFE_INTEGER) - (b.dueDate ?? Number.MAX_SAFE_INTEGER))
+
+  const upcomingDeadlines = deadlines
+    .filter(d => !d.completed)
+    .sort((a, b) => a.deadlineAt - b.deadlineAt)
+
+  const assignmentDeadlineIds = new Set(upcomingDeadlines.map(d => d.assignmentId).filter(Boolean))
+  const assignmentDueItems = activeAssignments
+    .filter(a => a.dueDate && !assignmentDeadlineIds.has(a.id))
+    .map(a => ({
+      id: `assignment-${a.id}`,
+      title: a.title,
+      detail: a.description || `${a.priority} priority assignment`,
+      date: a.dueDate,
+      type: 'assignment',
+    }))
+
+  const alertDueItems = alerts
+    .filter(a => a.dueAt)
+    .map(a => ({
+      id: `alert-${a.id}`,
+      title: a.title,
+      detail: a.reason,
+      date: a.dueAt,
+      type: a.sourceType,
+    }))
+
+  const comingUp = [
+    ...upcomingDeadlines.map(d => ({
+      id: `deadline-${d.id}`,
+      title: d.title,
+      detail: d.type.replace('_', ' '),
+      date: d.deadlineAt,
+      type: d.type,
+    })),
+    ...assignmentDueItems,
+    ...alertDueItems,
+  ].sort((a, b) => (a.date ?? Number.MAX_SAFE_INTEGER) - (b.date ?? Number.MAX_SAFE_INTEGER)).slice(0, 8)
+
+  const readingItems = upcomingDeadlines
+    .filter(d => d.type === 'reading' || /\b(read|chapter|case|article|coursepack)\b/i.test(d.title))
+    .slice(0, 6)
+
+  const dueAssignments = [
+    ...upcomingDeadlines.filter(d => ['assignment', 'project', 'presentation', 'quiz', 'exam'].includes(d.type)),
+    ...assignmentDueItems.map(a => ({
+      id: a.id,
+      title: a.title,
+      deadlineAt: a.date ?? 0,
+      type: 'assignment' as AcademicDeadline['type'],
+      completed: false,
+    })),
+  ].sort((a, b) => a.deadlineAt - b.deadlineAt).slice(0, 6)
+
+  const prepAlerts = alerts
+    .filter(a => a.sourceType === 'setup' || a.sourceType === 'class_action' || /\b(prepare|setup|before class|review|bring)\b/i.test(`${a.title} ${a.reason}`))
+    .slice(0, 6)
+
+  const prepMeetings = upcomingDeadlines
+    .filter(d => d.type === 'office_hours' || d.type === 'meeting')
+    .slice(0, 3)
+
+  const nextDate = comingUp[0]?.date
+
+  return (
+    <section className="phase3-card course-calendar-view">
+      <header className="phase3-header">
+        <div>
+          <p className="phase3-eyebrow">Course Calendar</p>
+          <h1>{currentCourse.code ?? currentCourse.name}</h1>
+          <span>
+            {nextDate
+              ? `Next up: ${comingUp[0].title} on ${formatCalendarDate(nextDate)}.`
+              : 'No dated work is available yet. Import a syllabus to populate the course calendar.'}
+          </span>
+        </div>
+        <div className="course-calendar-meta" aria-label="Course details">
+          <span><BookOpen size={13} /> {currentCourse.name}</span>
+          {currentCourse.professorName && <span><GraduationCap size={13} /> {currentCourse.professorName}</span>}
+          {currentCourse.location && <span><PanelTop size={13} /> {currentCourse.location}</span>}
+          {currentCourse.term && <span><CalendarDays size={13} /> {currentCourse.term}</span>}
+        </div>
+      </header>
+
+      <div className="course-calendar-grid">
+        <section className="phase3-panel course-calendar-main">
+          <h2>Coming up</h2>
+          {comingUp.length === 0 ? (
+            <CourseCalendarEmpty text="No upcoming course items yet." />
+          ) : comingUp.map((item, index) => (
+            <CourseCalendarRow
+              key={item.id}
+              icon={<CalendarDays size={15} />}
+              title={item.title}
+              detail={`${formatCalendarDate(item.date)} · ${item.detail}`}
+              meta={index === 0 ? 'Next' : item.type.replace('_', ' ')}
+              urgent={isDueSoon(item.date)}
+            />
+          ))}
+        </section>
+
+        <section className="phase3-panel">
+          <h2>Read before class</h2>
+          {readingItems.length === 0 ? (
+            <CourseCalendarEmpty text="No reading deadlines have been captured yet." />
+          ) : readingItems.map(item => (
+            <CourseCalendarRow
+              key={item.id}
+              icon={<BookOpen size={15} />}
+              title={item.title}
+              detail={formatCalendarDate(item.deadlineAt)}
+              meta="Reading"
+              urgent={isDueSoon(item.deadlineAt)}
+            />
+          ))}
+        </section>
+
+        <section className="phase3-panel">
+          <h2>Assignments due</h2>
+          {dueAssignments.length === 0 ? (
+            <CourseCalendarEmpty text="No active assignment due dates yet." />
+          ) : dueAssignments.map(item => (
+            <CourseCalendarRow
+              key={item.id}
+              icon={<ClipboardList size={15} />}
+              title={item.title}
+              detail={formatCalendarDate(item.deadlineAt)}
+              meta={item.type.replace('_', ' ')}
+              urgent={isDueSoon(item.deadlineAt)}
+            />
+          ))}
+        </section>
+
+        <section className="phase3-panel">
+          <h2>Prepare before class</h2>
+          {prepAlerts.length === 0 && prepMeetings.length === 0 ? (
+            <CourseCalendarEmpty text="No setup or class prep alerts yet." />
+          ) : (
+            <>
+              {prepAlerts.map(alert => (
+                <CourseCalendarRow
+                  key={alert.id}
+                  icon={<Target size={15} />}
+                  title={alert.title}
+                  detail={alert.reason}
+                  meta={alert.actionLabel || alert.priority}
+                  urgent={alert.priority === 'critical' || alert.priority === 'high'}
+                />
+              ))}
+              {prepMeetings.map(item => (
+                <CourseCalendarRow
+                  key={item.id}
+                  icon={<Clock3 size={15} />}
+                  title={item.title}
+                  detail={formatCalendarDate(item.deadlineAt)}
+                  meta={item.type.replace('_', ' ')}
+                  urgent={isDueSoon(item.deadlineAt)}
+                />
+              ))}
+            </>
+          )}
+        </section>
+      </div>
+    </section>
+  )
+}
+
+function CourseCalendarRow({
+  icon,
+  title,
+  detail,
+  meta,
+  urgent,
+}: {
+  icon: React.ReactNode
+  title: string
+  detail: string
+  meta: string
+  urgent?: boolean
+}) {
+  return (
+    <div className={cn('course-calendar-row', urgent && 'course-calendar-row-urgent')}>
+      <span>{icon}</span>
+      <div>
+        <strong>{title}</strong>
+        <em>{detail}</em>
+      </div>
+      <small>{meta}</small>
+    </div>
+  )
+}
+
+function CourseCalendarEmpty({ text }: { text: string }) {
+  return <div className="course-calendar-empty">{text}</div>
+}
+
+function formatCalendarDate(value?: number) {
+  if (!value) return 'No date'
+  return new Date(value).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
+function isDueSoon(value?: number) {
+  if (!value) return false
+  const delta = value - Date.now()
+  return delta < 3 * 86_400_000
+}
+
 // ── Materials tab ─────────────────────────────────────────────────────────
 // Full-width version of the materials right-rail panel. Same data, more
 // breathing room: imported file list, usage backref counts, publish-site
@@ -1814,10 +2053,13 @@ function MaterialsView({
   }
   const imported = (selectedCourse.materialsImportedFiles ?? []).filter(r => r.noteId)
   const importedNoteIds = new Set(imported.map(r => r.noteId).filter(Boolean))
-  const readingNotes = notes
-    .filter(n => n.courseId === selectedCourse.id && n.documentType === 'reading')
+  const materialNotes = notes
+    .filter(n =>
+      n.courseId === selectedCourse.id &&
+      (n.documentType === 'reading' || n.documentType === 'assignment_prompt' || n.documentType === 'syllabus')
+    )
     .sort((a, b) => b.updatedAt - a.updatedAt)
-  const manualReadings = readingNotes.filter(n => !importedNoteIds.has(n.id))
+  const manualMaterials = materialNotes.filter(n => !importedNoteIds.has(n.id))
   return (
     <section className="phase3-card">
       <header className="phase3-header">
@@ -1825,9 +2067,9 @@ function MaterialsView({
           <p className="phase3-eyebrow">Materials</p>
           <h1>{selectedCourse.code ?? selectedCourse.name}</h1>
           <span>
-            {readingNotes.length === 0
-              ? 'No readings yet — upload a file or pick a watched folder.'
-              : `${readingNotes.length} reading${readingNotes.length === 1 ? '' : 's'} available for study tools.`}
+            {materialNotes.length === 0
+              ? 'No course materials yet — upload a file or pick a watched folder.'
+              : `${materialNotes.length} source material${materialNotes.length === 1 ? '' : 's'} available for study tools.`}
           </span>
         </div>
         <div className="phase3-actions">
@@ -1874,14 +2116,14 @@ function MaterialsView({
           }}
         />
 
-        {readingNotes.length === 0 ? (
+        {materialNotes.length === 0 ? (
           <div className="px-2 py-8 text-center text-white/45 text-md">
-            Upload PDFs, DOCX, Markdown, or text files. They stay local and become course readings for flashcards and quizzes.
+            Upload PDFs, DOCX, Markdown, or text files. They stay local and become course source material for flashcards and quizzes.
           </div>
         ) : (
           <div className="space-y-1">
             <div className="text-2xs font-bold uppercase tracking-wider text-white/50">Course library</div>
-            {readingNotes.map(note => {
+            {materialNotes.map(note => {
               const record = imported.find(r => r.noteId === note.id)
               const label = record?.path.split('/').pop() ?? note.title
               const usage = record ? countMaterialUsages(notes, record.path) : 0
@@ -1898,6 +2140,8 @@ function MaterialsView({
                     <span className="block truncate text-2xs text-white/40">
                       {record ? 'Watched folder import' : 'Direct course upload'}
                       {' · '}
+                      {(note.documentType ?? 'note').replace('_', ' ')}
+                      {' · '}
                       Updated {new Date(note.updatedAt).toLocaleDateString()}
                     </span>
                   </span>
@@ -1913,9 +2157,9 @@ function MaterialsView({
           </div>
         )}
 
-        {manualReadings.length > 0 && imported.length > 0 && (
+        {manualMaterials.length > 0 && imported.length > 0 && (
           <div className="text-2xs text-white/35">
-            {manualReadings.length} direct upload{manualReadings.length === 1 ? '' : 's'} and {imported.length} watched-folder import{imported.length === 1 ? '' : 's'} are grouped together as course materials.
+            {manualMaterials.length} direct upload{manualMaterials.length === 1 ? '' : 's'} and {imported.length} watched-folder import{imported.length === 1 ? '' : 's'} are grouped together as course materials.
           </div>
         )}
       </div>

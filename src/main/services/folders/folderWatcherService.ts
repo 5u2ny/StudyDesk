@@ -13,7 +13,7 @@ import path from 'node:path';
 import { coursesService } from '../courses/coursesService';
 import type { Course, MaterialsImportRecord } from '../../../shared/schema/index';
 
-const SUPPORTED_EXTENSIONS = ['.pdf', '.txt', '.md', '.markdown'] as const;
+const SUPPORTED_EXTENSIONS = ['.pdf', '.docx', '.pptx', '.txt', '.md', '.markdown'] as const;
 const DEBOUNCE_MS = 750;
 
 export interface FileDetectedPayload {

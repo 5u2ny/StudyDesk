@@ -14,10 +14,12 @@ import { parseContent } from '../parseContent'
 
 export interface MaterialsReaderViewProps {
   note: Note
+  sourcePath?: string
+  embedded?: boolean
   onCaptureCreated?: () => void
 }
 
-export function MaterialsReaderView({ note, onCaptureCreated }: MaterialsReaderViewProps) {
+export function MaterialsReaderView({ note, sourcePath, embedded = false, onCaptureCreated }: MaterialsReaderViewProps) {
   const content = useMemo(() => parseContent(note.content), [note.content])
 
   const editor = useEditor({
@@ -71,26 +73,54 @@ export function MaterialsReaderView({ note, onCaptureCreated }: MaterialsReaderV
     // Try to find original file path from note metadata
     // Reading notes store source info in sourceQuote attrs or note metadata
     try {
+      if (sourcePath) {
+        await ipc.invoke('shell:openSourceFile', { path: sourcePath })
+        return
+      }
       const content = JSON.parse(note.content)
       const sourceNode = content?.content?.find((n: any) =>
-        n.type === 'sourceQuote' && n.attrs?.filePath
+        n.type === 'sourceQuote' && (n.attrs?.sourcePath || n.attrs?.filePath)
       )
-      if (sourceNode?.attrs?.filePath) {
-        await ipc.invoke('shell:openSourceFile', { path: sourceNode.attrs.filePath })
+      const path = sourceNode?.attrs?.sourcePath || sourceNode?.attrs?.filePath
+      if (path) {
+        await ipc.invoke('shell:openSourceFile', { path })
       }
     } catch (e) { console.warn('[MaterialsReader] Could not open source file:', e) }
-  }, [note])
+  }, [note, sourcePath])
 
   if (!editor) return null
 
   return (
-    <section className="materials-reader-view">
-      <header className="materials-reader-header">
-        <div className="materials-reader-header-left">
-          <BookOpen size={14} className="materials-reader-icon" />
-          <h2 className="materials-reader-title">{note.title || 'Reading'}</h2>
-        </div>
-        <div className="materials-reader-toolbar">
+    <section className={embedded ? 'materials-reader-view embedded' : 'materials-reader-view'}>
+      {!embedded && (
+        <header className="materials-reader-header">
+          <div className="materials-reader-header-left">
+            <BookOpen size={14} className="materials-reader-icon" />
+            <h2 className="materials-reader-title">{note.title || 'Reading'}</h2>
+          </div>
+          <div className="materials-reader-toolbar">
+            <button
+              className="materials-reader-btn"
+              onClick={handleHighlight}
+              title="Highlight selection and create capture"
+            >
+              <Highlighter size={14} />
+              <span>Highlight</span>
+            </button>
+            <button
+              className="materials-reader-btn"
+              onClick={handleOpenSource}
+              disabled={!sourcePath}
+              title="Open original source file"
+            >
+              <ExternalLink size={14} />
+              <span>Open source</span>
+            </button>
+          </div>
+        </header>
+      )}
+      {embedded && (
+        <div className="materials-reader-inline-toolbar">
           <button
             className="materials-reader-btn"
             onClick={handleHighlight}
@@ -99,16 +129,8 @@ export function MaterialsReaderView({ note, onCaptureCreated }: MaterialsReaderV
             <Highlighter size={14} />
             <span>Highlight</span>
           </button>
-          <button
-            className="materials-reader-btn"
-            onClick={handleOpenSource}
-            title="Open original source file"
-          >
-            <ExternalLink size={14} />
-            <span>Open source</span>
-          </button>
         </div>
-      </header>
+      )}
 
       <div className="materials-reader-content">
         <EditorContent editor={editor} />

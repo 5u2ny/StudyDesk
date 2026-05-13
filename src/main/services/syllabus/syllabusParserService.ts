@@ -1,4 +1,9 @@
 import type { AcademicDeadline, Course } from '../../../shared/schema/index';
+import {
+  extractSyllabusGradingComponents,
+  extractSyllabusScheduleRows,
+  type SyllabusGradingComponent,
+} from '../../../shared/syllabusSchedule';
 import { extractDate } from '../assignments/assignmentParserService';
 
 // ── Result types ────────────────────────────────────────────────────────
@@ -13,7 +18,11 @@ export interface ClassMeeting {
 export interface ScheduleRow {
   weekOrDate: string;    // "Week 1", "Jan 15", "1/15" etc.
   topic: string;
+  dateLabel?: string;
   readings?: string;
+  prepItems?: string[];
+  milestones?: string[];
+  theme?: string;
   deliverable?: string;  // assignment/quiz due that week
   deadlineAt?: number;
 }
@@ -42,6 +51,7 @@ export interface SyllabusParseResult {
   classMeetings: ClassMeeting[];
   scheduleRows: ScheduleRow[];
   assignments: ExtractedAssignment[];
+  gradingComponents: SyllabusGradingComponent[];
   readings: ExtractedReading[];
   setupTasks: SetupTask[];
   deadlines: Array<Partial<AcademicDeadline> & { title: string; deadlineAt: number }>;
@@ -88,7 +98,7 @@ function parseDays(raw: string): string[] {
 
 /** Extract a time range like "10:00 AM - 11:15 AM" or "10:00-11:15am" */
 function parseTimeRange(text: string): { startTime: string; endTime: string } | null {
-  const m = text.match(/(\d{1,2}(?::\d{2})?)\s*(am|pm)?\s*[-–—to]+\s*(\d{1,2}(?::\d{2})?)\s*(am|pm)/i);
+  const m = text.match(/(\d{1,2}(?::\d{2})?)\s*(am|pm)?\s*(?:[-–—]|\bto\b)\s*(\d{1,2}(?::\d{2})?)\s*(am|pm)/i);
   if (!m) return null;
   const endMeridiem = m[4].toUpperCase();
   const startMeridiem = m[2]?.toUpperCase() ?? endMeridiem;
@@ -156,7 +166,9 @@ function isHeading(line: string): boolean {
 function extractCourse(lines: string[], term?: string): Partial<Course> {
   const email = lines.join('\n').match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
   const code = lines.join('\n').match(/\b[A-Z]{2,5}\s?\d{3,4}[A-Z]?\b/)?.[0];
-  const professorLine = lines.find(line => /\b(professor|instructor|faculty)\b/i.test(line));
+  const professorLine =
+    lines.find(line => /\b(instructor|faculty)\b/i.test(line)) ??
+    lines.find(line => /\bprofessor\b/i.test(line));
   const officeHoursLine = lines.find(line => /\boffice hours\b/i.test(line));
 
   // Location: look for room/building patterns, keeping preceding name (e.g. "Miller Hall 1018")
@@ -188,18 +200,24 @@ function extractCourse(lines: string[], term?: string): Partial<Course> {
 function extractClassMeetings(lines: string[]): ClassMeeting[] {
   const meetings: ClassMeeting[] = [];
   for (const line of lines) {
+    const normalizedLine = line
+      .replace(/\s*:\s*/g, ':')
+      .replace(/\b(\d)\s+(\d)\b/g, '$1$2')
+      .replace(/\b([ap])\s*m\b/ig, '$1m')
+      .replace(/\s+/g, ' ');
     // Skip office hours lines -- they have day+time but aren't class meetings
-    if (/\boffice hours\b/i.test(line)) continue;
+    if (/\boffice hours\b/i.test(normalizedLine)) continue;
 
     // Pattern: "MW 10:00 AM - 11:15 AM" or "Tuesday/Thursday 2:00-3:15pm, Room 301"
-    const dayMatch = line.match(/\b((?:M|T|W|Th|F|Sa|Su|Mon(?:day)?|Tue(?:s(?:day)?)?|Wed(?:nesday)?|Thu(?:rs(?:day)?)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?)[,\/&\s]*(?:M|T|W|Th|F|Sa|Su|Mon(?:day)?|Tue(?:s(?:day)?)?|Wed(?:nesday)?|Thu(?:rs(?:day)?)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?)*)\b/i);
-    const timeRange = parseTimeRange(line);
+    const compactDayMatch = normalizedLine.match(/\b(MWF|MW|TTh|TR|TH|TuTh)\b/i);
+    const dayMatch = compactDayMatch ?? normalizedLine.match(/\b((?:M|T|W|Th|F|Sa|Su|Mon(?:day)?|Tue(?:s(?:day)?)?|Wed(?:nesday)?|Thu(?:rs(?:day)?)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?)(?:(?:\s+and\s+|[,\/&\s]+)(?:M|T|W|Th|F|Sa|Su|Mon(?:day)?|Tue(?:s(?:day)?)?|Wed(?:nesday)?|Thu(?:rs(?:day)?)?|Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?))*)\b/i);
+    const timeRange = parseTimeRange(normalizedLine);
     if (!dayMatch || !timeRange) continue;
 
     const days = parseDays(dayMatch[1]);
     if (days.length === 0) continue;
 
-    const locMatch = line.match(/\b(\w+\s+(?:hall|center|building)\s*\w*|(?:room|rm\.?|bldg\.?)\s*[A-Z0-9 -]+)/i);
+    const locMatch = normalizedLine.match(/\b(\w+\s+(?:hall|center|building)\s*\w*|(?:room|rm\.?|bldg\.?)\s*[A-Z0-9 -]+)/i);
     meetings.push({
       days,
       startTime: timeRange.startTime,
@@ -239,6 +257,21 @@ function extractGradingAssignments(lines: string[]): ExtractedAssignment[] {
 }
 
 function extractScheduleRows(lines: string[], fallbackYear?: number): ScheduleRow[] {
+  const structuredRows = extractSyllabusScheduleRows(lines.join('\n'), fallbackYear);
+  if (structuredRows.length > 0) {
+    return structuredRows.map(row => ({
+      weekOrDate: row.weekLabel,
+      dateLabel: row.dateLabel,
+      topic: row.topic,
+      readings: row.readings.join('; ') || undefined,
+      prepItems: row.prepItems,
+      milestones: row.milestones,
+      theme: row.theme,
+      deliverable: row.milestones[0],
+      deadlineAt: row.startAt,
+    }));
+  }
+
   const rows: ScheduleRow[] = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -359,6 +392,23 @@ function extractSetupTasks(lines: string[]): SetupTask[] {
       }
     }
   }
+
+  const text = lines.join(' ');
+  const explicitTools: Array<[RegExp, string, SetupTask['category']]> = [
+    [/\bMySQL\s+Server\b/i, 'Install MySQL Server', 'software'],
+    [/\bMySQL\s+Workbench\b/i, 'Install MySQL Workbench', 'software'],
+    [/\bSQL\s+Tutorial\b/i, 'Review SQL tutorial', 'material'],
+    [/\bER\s+diagram\b/i, 'Set up ER diagram tool', 'software'],
+    [/\bTableau\s+Desktop\b/i, 'Install Tableau Desktop', 'software'],
+  ];
+  for (const [pattern, title, category] of explicitTools) {
+    if (!pattern.test(text)) continue;
+    const key = title.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      tasks.push({ title, category });
+    }
+  }
   return tasks;
 }
 
@@ -392,9 +442,10 @@ export const syllabusParserService = {
 
     const classMeetings = extractClassMeetings(lines);
     const scheduleRows = extractScheduleRows(scheduleLines.length > 0 ? scheduleLines : lines, fallbackYear);
+    const gradingComponents = extractSyllabusGradingComponents(text);
     const assignments = extractGradingAssignments(gradingLines.length > 0 ? gradingLines : lines);
     const readings = extractReadings(lines);
-    const setupTasks = extractSetupTasks(materialsLines.length > 0 ? materialsLines : lines);
+    const setupTasks = extractSetupTasks(lines);
 
     // Build deadlines from all date-bearing lines (original behavior, enhanced)
     const deadlines = lines
@@ -417,6 +468,6 @@ export const syllabusParserService = {
         completed: false,
       }));
 
-    return { course, classMeetings, scheduleRows, assignments, readings, setupTasks, deadlines, notes: [] };
+    return { course, classMeetings, scheduleRows, assignments, gradingComponents, readings, setupTasks, deadlines, notes: [] };
   },
 };

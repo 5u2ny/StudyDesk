@@ -116,6 +116,73 @@ Academic Honor Code: All students are expected to adhere to the university honor
 Accommodations: Students needing accommodations should contact the instructor.
 `;
 
+// ── BUAD 6271 Database Management (Spring 2026) ────────────────────────
+// Fixture mirrors the embedded text shape extracted from the real PDF:
+// the schedule table is flattened into one long line.
+
+const BUAD_6271_SYLLABUS = `
+Professor S. Li – Syllabus for BUAD 6271: Database Management
+BUAD 6271 : Database Management
+Spring 2026
+Instructor: Seth Li
+Class Location & Hours: Miller Hall 10 27 , Tuesday and Thursday 9 : 3 0 – 10:50 a m
+Office: Miller Hall 3056
+E-mail: seth.li@mason.wm.edu
+Office Hours: By Appointment
+
+COURSE MATERIALS
+Textbook: Database Systems: Introduction to Database and Data Warehouses
+Nenad Jukic, Susan Vrbsky, and Svetlozar Nestorov
+ISBN-13: 978-1943153190
+Useful Links:
+MySQL:
+Download links:
+1. MySQL Server
+2. MySQL Workbench
+SQL Tutorial: http://www.1keydata.com/sql/sql.html
+ER diagram: https://erdplus.com/trial
+Tableau Desktop (product key: TCK5-9053-BC00-5C03-0A72, valid till 5/29/2026)
+
+COURSE GRADING
+Component Percent
+Individual Level – 60%
+Class Participation 5 %
+Homework 10%
+In-class Quizzes 15 %
+Final Exam (May 7) 30%
+Team Level – 40%
+Team Presentations (Week 6, Week 15) 20%
+Final Project Report (May 10) 20%
+
+Date Topic/Activities Readings Notes
+Theme 1: Why do I need a database? What data do I need?
+Week 1: Jan 20, 22 Introduction to data base management, Basic components of data and database Chapter 1, Chapter 2 *Teams decided
+Week 2: Jan 27, 29 Basic components of data and database Chapter 2 *DB case decided
+Theme 2: How do I design my database?
+Week 3: Feb 3, 5 Introduction to ER-Diagram Chapter 2 *MySQL installed
+Week 4: Feb 10, 12 Relational DB modeling Chapter 3
+Week 5: Feb 17, 19 Normalization Chapter 4 Assignment 1 - ER Diagram Due
+Week 6: Feb 24, 26 Team presentation 1 - The design of your DB
+Theme 3: Database implementation and how do I get information from it?
+Week 7: Mar 3, 5 SQL - Single Entity Chapter 5 Assignment 2 - Normalization Due
+Week 8: Mar 10, 12 Spring Break
+Week 9: Mar 17, 19 MBA Sprint Week
+Week 10: Mar 24, 26 SQL - Single Entity Chapter 5
+Week 11: Mar 31, Apr 2 SQL - Multiple Entities Assignment 3 - SQL Due
+Week 12: Apr 7, 9 SQL - Advanced Queries *Tableau installed and connected to MySQL
+Theme 4: How to turn data into intelligence?
+Week 12: Apr 7, 9 Data Analytics
+Week 13: Apr 14, 16 Introduction to Data Visualization
+Week 14: Apr 21, 23 Dashboard Design Assignment 4 - Data Visualization Due
+Week 15: Apr 28, 30 Team presentation 2 - Your DB solution
+Week 16: May 5 (Tuesday) Review
+May 7 (Thursday) Final Exam
+May 10 (Sunday) Final Project Report Due
+
+COURSE POLICIES
+Attendance is essential.
+`;
+
 // ── Tests ───────────────────────────────────────────────────────────────
 
 describe('syllabusParserService.parse — BUAD 6461 Product Management', () => {
@@ -368,6 +435,82 @@ describe('syllabusParserService.parse — BUAD 6461 Product Management', () => {
       );
       expect(acc).toBeDefined();
     });
+  });
+});
+
+describe('syllabusParserService.parse — BUAD 6271 Database Management', () => {
+  let result: SyllabusParseResult;
+
+  beforeAll(() => {
+    result = syllabusParserService.parse({ text: BUAD_6271_SYLLABUS, term: 'Spring 2026' });
+  });
+
+  test('extracts BUAD6271 course metadata', () => {
+    expect(result.course.code).toBe('BUAD 6271');
+    expect(result.course.name).toMatch(/Database Management/i);
+    expect(result.course.professorName).toMatch(/Seth Li/i);
+    expect(result.course.professorEmail).toBe('seth.li@mason.wm.edu');
+    expect(result.course.location).toMatch(/Miller Hall/i);
+    expect(result.course.term).toBe('Spring 2026');
+  });
+
+  test('extracts Tuesday/Thursday 9:30-10:50 class meeting', () => {
+    expect(result.classMeetings.length).toBeGreaterThanOrEqual(1);
+    expect(result.classMeetings[0].days).toEqual(['Tue', 'Thu']);
+    expect(result.classMeetings[0].startTime).toMatch(/9:30\s*AM/i);
+    expect(result.classMeetings[0].endTime).toMatch(/10:50\s*AM/i);
+  });
+
+  test('extracts grading components for later grade management', () => {
+    expect(result.gradingComponents).toEqual(expect.arrayContaining([
+      { title: 'Class Participation', weight: '5%' },
+      { title: 'Homework', weight: '10%' },
+      { title: 'In-class Quizzes', weight: '15%' },
+      { title: 'Final Exam', weight: '30%' },
+      { title: 'Team Presentations', weight: '20%' },
+      { title: 'Final Project Report', weight: '20%' },
+    ]));
+  });
+
+  test('extracts chronological Week 1 through Week 16 schedule rows plus final due dates', () => {
+    const labels = result.scheduleRows.map(row => row.weekOrDate);
+    expect(labels[0]).toBe('Week 1');
+    expect(labels).toContain('Week 16');
+    expect(result.scheduleRows.find(row => row.weekOrDate === 'Week 1')?.topic).toMatch(/Introduction to data base management/i);
+    expect(result.scheduleRows.find(row => row.weekOrDate === 'Week 16')?.topic).toMatch(/Review/i);
+    expect(result.scheduleRows.find(row => /Final Exam/i.test(row.topic))?.weekOrDate).toBe('Final Exam');
+    expect(result.scheduleRows.find(row => /Final Project Report/i.test(row.topic))?.weekOrDate).toBe('Final Project');
+  });
+
+  test('keeps textbook chapters as class prep readings', () => {
+    const week1 = result.scheduleRows.find(row => row.weekOrDate === 'Week 1');
+    const week4 = result.scheduleRows.find(row => row.weekOrDate === 'Week 4');
+    const week7 = result.scheduleRows.find(row => row.weekOrDate === 'Week 7');
+    expect(week1?.readings).toMatch(/Chapter 1/i);
+    expect(week1?.readings).toMatch(/Chapter 2/i);
+    expect(week4?.readings).toMatch(/Chapter 3/i);
+    expect(week7?.readings).toMatch(/Chapter 5/i);
+  });
+
+  test('extracts setup tasks from materials and schedule notes', () => {
+    expect(result.setupTasks.map(t => t.title)).toEqual(expect.arrayContaining([
+      'Install MySQL Server',
+      'Install MySQL Workbench',
+      'Set up ER diagram tool',
+      'Install Tableau Desktop',
+    ]));
+    expect(result.scheduleRows.find(row => row.weekOrDate === 'Week 3')?.prepItems).toContain('MySQL installed');
+    expect(result.scheduleRows.find(row => row.weekOrDate === 'Week 12')?.prepItems).toContain('Tableau installed and connected to MySQL');
+  });
+
+  test('extracts assignment, presentation, exam, and project milestones from the schedule', () => {
+    expect(result.scheduleRows.find(row => row.weekOrDate === 'Week 5')?.milestones).toContain('Assignment 1 - ER Diagram Due');
+    expect(result.scheduleRows.find(row => row.weekOrDate === 'Week 7')?.milestones).toContain('Assignment 2 - Normalization Due');
+    expect(result.scheduleRows.find(row => row.weekOrDate === 'Week 11')?.milestones).toContain('Assignment 3 - SQL Due');
+    expect(result.scheduleRows.find(row => row.weekOrDate === 'Week 14')?.milestones).toContain('Assignment 4 - Data Visualization Due');
+    expect(result.scheduleRows.find(row => row.weekOrDate === 'Week 6')?.milestones?.[0]).toMatch(/Team presentation 1/i);
+    expect(result.scheduleRows.find(row => /Final Exam/i.test(row.topic))?.milestones).toContain('Final Exam');
+    expect(result.scheduleRows.find(row => /Final Project Report/i.test(row.topic))?.milestones).toContain('Final Project Report Due');
   });
 });
 

@@ -23,6 +23,7 @@ import { selectPanicItems } from './lib/panicMode'
 import type { SearchHit } from './lib/searchIndex'
 import { routePaletteHit } from './lib/paletteRouter'
 import { parseTipTapJson, textFromTipTapJson, walkTipTapDoc } from '../../shared/tiptap'
+import { extractSyllabusScheduleRows, type SyllabusScheduleRow } from '../../shared/syllabusSchedule'
 import {
   ShellContainer,
   IconRail,
@@ -1658,7 +1659,7 @@ function WorkspaceSurface({
     case 'daily':
       return <DailyJournalView notes={notes} currentCourse={currentCourse} onUpdate={onUpdate} onRefresh={onRefresh} onSelect={onSelect} />
     case 'calendar':
-      return <CourseCalendarView currentCourse={currentCourse} deadlines={deadlines} assignments={assignments} alerts={alerts} />
+      return <CourseCalendarView currentCourse={currentCourse} notes={notes} deadlines={deadlines} assignments={assignments} alerts={alerts} />
     case 'deadlines':
       // Ticket 1.1: full-width deadlines list. View toggle for Timeline
       // is rendered inline by DeadlinesView so the user can swap layouts.
@@ -1787,14 +1788,18 @@ function DeadlinesView({
 }
 
 // ── Course Calendar tab ────────────────────────────────────────────────────
-// Renderer-only view over existing course, deadline, assignment, and alert data.
+// Renderer-only view over existing course, syllabus note, deadline, assignment,
+// and alert data. When a syllabus schedule exists, it becomes the primary
+// calendar surface; generic deadlines stay supplemental.
 function CourseCalendarView({
   currentCourse,
+  notes,
   deadlines,
   assignments,
   alerts,
 }: {
   currentCourse?: Course
+  notes: Note[]
   deadlines: AcademicDeadline[]
   assignments: Assignment[]
   alerts: AttentionAlert[]
@@ -1812,6 +1817,12 @@ function CourseCalendarView({
       </section>
     )
   }
+
+  const syllabusNote = notes
+    .filter(n => n.courseId === currentCourse.id && n.documentType === 'syllabus')
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0]
+  const syllabusText = syllabusNote ? noteText(syllabusNote.content) : ''
+  const scheduleRows = syllabusText ? extractSyllabusScheduleRows(syllabusText) : []
 
   const activeAssignments = assignments
     .filter(a => a.status !== 'archived' && a.status !== 'submitted')
@@ -1879,6 +1890,40 @@ function CourseCalendarView({
 
   const nextDate = comingUp[0]?.date
 
+  if (scheduleRows.length > 0) {
+    const milestoneCount = scheduleRows.reduce((sum, row) => sum + row.milestones.length, 0)
+    const prepCount = scheduleRows.reduce((sum, row) => sum + row.readings.length + row.prepItems.length, 0)
+    return (
+      <section className="phase3-card course-calendar-view">
+        <header className="phase3-header course-calendar-schedule-header">
+          <div>
+            <p className="phase3-eyebrow">Course Calendar</p>
+            <h1>{currentCourse.code ?? currentCourse.name}</h1>
+            <span>
+              {scheduleRows.length} syllabus week{scheduleRows.length === 1 ? '' : 's'} · {prepCount} prep item{prepCount === 1 ? '' : 's'} · {milestoneCount} milestone{milestoneCount === 1 ? '' : 's'}
+            </span>
+          </div>
+          <div className="course-calendar-meta" aria-label="Course details">
+            <span><BookOpen size={13} /> {currentCourse.name}</span>
+            {currentCourse.professorName && <span><GraduationCap size={13} /> {currentCourse.professorName}</span>}
+            {currentCourse.location && <span><PanelTop size={13} /> {currentCourse.location}</span>}
+            {currentCourse.term && <span><CalendarDays size={13} /> {currentCourse.term}</span>}
+          </div>
+        </header>
+
+        <div className="syllabus-calendar-list">
+          {scheduleRows.map((row, index) => (
+            <SyllabusCalendarWeek
+              key={`${row.weekLabel}-${row.dateLabel}-${index}`}
+              row={row}
+              supplementalMilestones={milestonesForScheduleRow(row, upcomingDeadlines, activeAssignments)}
+            />
+          ))}
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section className="phase3-card course-calendar-view">
       <header className="phase3-header">
@@ -1919,7 +1964,7 @@ function CourseCalendarView({
         <section className="phase3-panel">
           <h2>Read before class</h2>
           {readingItems.length === 0 ? (
-            <CourseCalendarEmpty text="No reading deadlines have been captured yet." />
+            <CourseCalendarEmpty text="No syllabus schedule rows captured yet." />
           ) : readingItems.map(item => (
             <CourseCalendarRow
               key={item.id}
@@ -1982,6 +2027,68 @@ function CourseCalendarView({
   )
 }
 
+function SyllabusCalendarWeek({
+  row,
+  supplementalMilestones,
+}: {
+  row: SyllabusScheduleRow
+  supplementalMilestones: string[]
+}) {
+  const prepItems = [...row.readings, ...row.prepItems]
+  const milestones = uniqueCalendarLabels([...row.milestones, ...supplementalMilestones])
+  return (
+    <article className="syllabus-calendar-week">
+      <div className="syllabus-calendar-date">
+        <strong>{row.weekLabel}</strong>
+        <span>{row.dateLabel}</span>
+      </div>
+      <div className="syllabus-calendar-body">
+        {row.theme && <div className="syllabus-calendar-theme">{row.theme}</div>}
+        <h2>{row.topic}</h2>
+        <div className="syllabus-calendar-lanes">
+          <SyllabusCalendarLane
+            icon={<BookOpen size={14} />}
+            label="Class prep"
+            empty="No readings or prep captured"
+            items={prepItems}
+          />
+          <SyllabusCalendarLane
+            icon={<Target size={14} />}
+            label="Milestones"
+            empty="No assignment or exam milestone"
+            items={milestones}
+          />
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function SyllabusCalendarLane({
+  icon,
+  label,
+  empty,
+  items,
+}: {
+  icon: React.ReactNode
+  label: string
+  empty: string
+  items: string[]
+}) {
+  return (
+    <section className="syllabus-calendar-lane">
+      <h3>{icon}{label}</h3>
+      {items.length === 0 ? (
+        <p>{empty}</p>
+      ) : (
+        <ul>
+          {items.map(item => <li key={item}>{item}</li>)}
+        </ul>
+      )}
+    </section>
+  )
+}
+
 function CourseCalendarRow({
   icon,
   title,
@@ -2009,6 +2116,41 @@ function CourseCalendarRow({
 
 function CourseCalendarEmpty({ text }: { text: string }) {
   return <div className="course-calendar-empty">{text}</div>
+}
+
+function uniqueCalendarLabels(values: string[]) {
+  const seen = new Set<string>()
+  return values.map(v => v.trim()).filter(Boolean).filter(value => {
+    const key = value.toLowerCase()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function milestonesForScheduleRow(row: SyllabusScheduleRow, deadlines: AcademicDeadline[], assignments: Assignment[]) {
+  if (!row.startAt && !row.endAt) return []
+  const start = startOfDay(row.startAt ?? row.endAt!)
+  const end = endOfDay(row.endAt ?? row.startAt!)
+  const deadlineLabels = deadlines
+    .filter(d => d.deadlineAt >= start && d.deadlineAt <= end && d.type !== 'reading')
+    .map(d => d.title)
+  const assignmentLabels = assignments
+    .filter(a => a.dueDate && a.dueDate >= start && a.dueDate <= end)
+    .map(a => a.title)
+  return uniqueCalendarLabels([...deadlineLabels, ...assignmentLabels])
+}
+
+function startOfDay(value: number) {
+  const d = new Date(value)
+  d.setHours(0, 0, 0, 0)
+  return d.getTime()
+}
+
+function endOfDay(value: number) {
+  const d = new Date(value)
+  d.setHours(23, 59, 59, 999)
+  return d.getTime()
 }
 
 function formatCalendarDate(value?: number) {

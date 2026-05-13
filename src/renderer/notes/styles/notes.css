@@ -2991,6 +2991,139 @@ body {
   grid-row: span 2;
 }
 
+.course-calendar-schedule-header {
+  min-height: 112px;
+}
+
+.syllabus-calendar-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 24px 24px;
+  overflow: hidden auto;
+}
+
+.syllabus-calendar-week {
+  display: grid;
+  grid-template-columns: 116px minmax(0, 1fr);
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--sd-line);
+  border-radius: 14px;
+  background: var(--sd-ink-1);
+}
+
+.syllabus-calendar-date {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.syllabus-calendar-date strong {
+  color: var(--sd-accent);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.syllabus-calendar-date span {
+  color: var(--sd-fg-2);
+  font-size: 13px;
+  font-weight: 720;
+  line-height: 1.25;
+}
+
+.syllabus-calendar-body {
+  min-width: 0;
+}
+
+.syllabus-calendar-theme {
+  margin-bottom: 4px;
+  overflow: hidden;
+  color: var(--sd-fg-4);
+  font-size: 11px;
+  font-weight: 780;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.syllabus-calendar-body h2 {
+  margin: 0 0 10px;
+  overflow: hidden;
+  color: var(--sd-fg-1);
+  font-size: 16px;
+  font-weight: 820;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.syllabus-calendar-lanes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.syllabus-calendar-lane {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--sd-line);
+  border-radius: 12px;
+  background: var(--sd-ink-0);
+}
+
+.syllabus-calendar-lane h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 8px;
+  color: var(--sd-fg-3);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.syllabus-calendar-lane ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.syllabus-calendar-lane li,
+.syllabus-calendar-lane p {
+  margin: 0;
+  color: var(--sd-fg-2);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.syllabus-calendar-lane li {
+  padding-left: 11px;
+  position: relative;
+}
+
+.syllabus-calendar-lane li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.62em;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--sd-accent);
+}
+
+.syllabus-calendar-lane p {
+  color: var(--sd-fg-4);
+}
+
 .course-calendar-row {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr) auto;
@@ -3296,6 +3429,11 @@ body {
   .syllabus-grid,
   .class-grid,
   .course-calendar-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .syllabus-calendar-week,
+  .syllabus-calendar-lanes {
     grid-template-columns: 1fr;
   }
 }

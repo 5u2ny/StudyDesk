@@ -19,6 +19,7 @@ import { StudioPanel } from './components/StudioPanel'
 import { NotesListView } from './components/NotesListView'
 import { AddCourseModal } from './components/AddCourseModal'
 import { CaptureInbox } from './components/CaptureInbox'
+import { MaterialFileViewer } from './components/MaterialFileViewer'
 import { selectPanicItems } from './lib/panicMode'
 import type { SearchHit } from './lib/searchIndex'
 import { routePaletteHit } from './lib/paletteRouter'
@@ -522,9 +523,10 @@ export default function App() {
         // single-paragraph wrap for plain-text/.pdf where structure was lost.
         const content = result.docJson ? JSON.stringify(result.docJson) : tipTapDocument(trimmed)
         const note = await ipc.invoke<Note>('notes:create', { title: result.title, content })
+        const materialKind = inferMaterialKind(payload.name, 'reading')
         const updated = await ipc.invoke<Note>('notes:update', {
           id: note.id,
-          patch: { documentType: 'reading', courseId: payload.courseId, tags: [`folder-import`] },
+          patch: { documentType: 'reading', courseId: payload.courseId, tags: [`folder-import`, `material:${materialKind.kind}`] },
         })
         setNotes(prev => [updated, ...prev.filter(n => n.id !== updated.id)])
         await ipc.invoke('folder:recordImport', {
@@ -646,7 +648,7 @@ export default function App() {
       patch: {
         documentType: input.documentType ?? 'reading',
         courseId: input.courseId,
-        tags: [],
+        tags: [`material:${inferMaterialKind(input.title, input.documentType ?? 'reading').kind}`],
       },
     })
     setNotes(prev => [updated, ...prev])
@@ -794,12 +796,12 @@ export default function App() {
     { id: 'calendar',   label: 'Calendar',  icon: <CalendarDays size={14} /> },
     { id: 'grades',     label: 'Grades',    icon: <BarChart3 size={14} /> },
     { id: 'deadlines',  label: 'Deadlines', icon: <Clock3 size={14} /> },
-    { id: 'map',        label: 'Map',       icon: <Network size={14} /> },
+    { id: 'materials',  label: 'Materials', icon: <Folder size={14} /> },
   ]
   // Overflow menu for less-used tools.
   const demotedTools: Array<{ id: WorkspaceTool; label: string; icon: React.ReactNode; hint?: string }> = [
     { id: 'daily',      label: 'Daily Journal', icon: <CalendarDays size={14} />, hint: 'Reflection & journaling' },
-    { id: 'materials',  label: 'Materials',     icon: <Folder size={14} />,       hint: 'Course files & readings' },
+    { id: 'map',        label: 'Map',           icon: <Network size={14} />,      hint: 'Relationship graph' },
   ]
   const [showMoreTools, setShowMoreTools] = useState(false)
   const moreToolsRef = useRef<HTMLDivElement | null>(null)
@@ -2446,6 +2448,30 @@ function isDueSoon(value?: number) {
   return delta < 3 * 86_400_000
 }
 
+type MaterialKind = 'reading' | 'case' | 'assignment_prompt' | 'slide' | 'study_guide' | 'syllabus'
+
+const materialKindOptions: Array<{ kind: MaterialKind; label: string }> = [
+  { kind: 'reading', label: 'Readings' },
+  { kind: 'case', label: 'Cases' },
+  { kind: 'assignment_prompt', label: 'Assignment prompts' },
+  { kind: 'slide', label: 'Slides' },
+  { kind: 'study_guide', label: 'Study guides' },
+  { kind: 'syllabus', label: 'Syllabus' },
+]
+
+function inferMaterialKind(name: string, documentType?: Note['documentType']): { kind: MaterialKind; label: string } {
+  const value = name.toLowerCase()
+  const kind: MaterialKind =
+    documentType === 'syllabus' ? 'syllabus'
+    : documentType === 'assignment_prompt' ? 'assignment_prompt'
+    : /\.(pptx?|key)$/i.test(value) || /\b(slides?|lecture deck|powerpoint|presentation)\b/i.test(value) ? 'slide'
+    : /\b(case|harvard|coffee chain)\b/i.test(value) ? 'case'
+    : /\b(assignment|homework|prompt|project report|deliverable)\b/i.test(value) ? 'assignment_prompt'
+    : /\b(study guide|review guide|exam review|practice exam)\b/i.test(value) ? 'study_guide'
+    : 'reading'
+  return materialKindOptions.find(option => option.kind === kind) ?? materialKindOptions[0]
+}
+
 // ── Materials tab ─────────────────────────────────────────────────────────
 // Full-width version of the materials right-rail panel. Same data, more
 // breathing room: imported file list, usage backref counts, publish-site
@@ -2462,6 +2488,8 @@ function MaterialsView({
   onStatus: (msg: string) => void
 }) {
   const [pickingFolder, setPickingFolder] = useState(false)
+  const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null)
+  const [materialFilter, setMaterialFilter] = useState<MaterialKind | 'all'>('all')
   if (!selectedCourse) {
     return (
       <section className="phase3-card">
@@ -2477,6 +2505,7 @@ function MaterialsView({
   }
   const imported = (selectedCourse.materialsImportedFiles ?? []).filter(r => r.noteId)
   const importedNoteIds = new Set(imported.map(r => r.noteId).filter(Boolean))
+  const importedByNoteId = new Map(imported.map(r => [r.noteId, r]))
   const materialNotes = notes
     .filter(n =>
       n.courseId === selectedCourse.id &&
@@ -2484,9 +2513,41 @@ function MaterialsView({
     )
     .sort((a, b) => b.updatedAt - a.updatedAt)
   const manualMaterials = materialNotes.filter(n => !importedNoteIds.has(n.id))
+  const materialCards = materialNotes.map(note => {
+    const record = importedByNoteId.get(note.id)
+    const label = record?.path.split('/').pop() ?? note.title
+    const usage = record ? countMaterialUsages(notes, record.path) : 0
+    const kind = inferMaterialKind(record?.path ?? note.title, note.documentType)
+    return { note, record, label, usage, kind }
+  })
+  const visibleMaterials = materialFilter === 'all'
+    ? materialCards
+    : materialCards.filter(item => item.kind.kind === materialFilter)
+  const selectedMaterial = materialCards.find(item => item.note.id === selectedMaterialId)
+    ?? visibleMaterials[0]
+    ?? materialCards[0]
+  const materialCounts = materialKindOptions.map(option => ({
+    ...option,
+    count: materialCards.filter(item => item.kind.kind === option.kind).length,
+  }))
+  const uploadRegionId = `materials-upload-${selectedCourse.id}`
+  const uploadDropZone = (
+    <div id={uploadRegionId}>
+      <FileDropZone
+        courseId={selectedCourse.id}
+        documentType="reading"
+        onCreate={onCreateFromFile}
+        onCreated={(noteId) => {
+          setSelectedMaterialId(noteId)
+          onRefresh()
+          onStatus('Material added to this course.')
+        }}
+      />
+    </div>
+  )
   return (
-    <section className="phase3-card">
-      <header className="phase3-header">
+    <section className="phase3-card materials-library-view">
+      <header className="phase3-header materials-page-header">
         <div>
           <p className="phase3-eyebrow">Materials</p>
           <h1>{selectedCourse.code ?? selectedCourse.name}</h1>
@@ -2496,7 +2557,14 @@ function MaterialsView({
               : `${materialNotes.length} source material${materialNotes.length === 1 ? '' : 's'} available for study tools.`}
           </span>
         </div>
-        <div className="phase3-actions">
+        <div className="phase3-actions materials-header-actions">
+          <button
+            className="outline-button"
+            onClick={() => {
+              const uploadLabel = document.getElementById(uploadRegionId)?.querySelector('label')
+              if (uploadLabel instanceof HTMLElement) uploadLabel.click()
+            }}
+          ><Upload size={15} /> Upload files</button>
           <button
             className="outline-button"
             disabled={pickingFolder}
@@ -2514,75 +2582,104 @@ function MaterialsView({
               }
             }}
           >{pickingFolder ? <Spinner size={15} /> : <Folder size={15} />} Pick folder</button>
-          <button
-            className="review-button"
-            onClick={async () => {
-              try {
-                const r = await ipc.invoke<{ written: boolean; outDir: string; noteCount: number; bytes: number } | null>('notes:publishStaticSite', { courseId: selectedCourse.id })
-                if (r?.written) onStatus(`Published ${r.noteCount} note${r.noteCount === 1 ? '' : 's'} to ${r.outDir}.`)
-                else onStatus('Publish cancelled.')
-              } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err)
-                onStatus(`Publish failed: ${msg}`)
-              }
-            }}
-          ><Upload size={15} /> Publish as static site</button>
         </div>
       </header>
-      <div className="px-4 pb-4 space-y-4">
-        <FileDropZone
-          courseId={selectedCourse.id}
-          documentType="reading"
-          onCreate={onCreateFromFile}
-          onCreated={() => {
-            onRefresh()
-            onStatus('Material added to this course.')
-          }}
-        />
-
+      <div className="materials-workspace-body">
         {materialNotes.length === 0 ? (
-          <div className="px-2 py-8 text-center text-white/45 text-md">
-            Upload PDFs, DOCX, Markdown, or text files. They stay local and become course source material for flashcards and quizzes.
+          <div className="materials-empty-state">
+            {uploadDropZone}
+            <p>Upload readings, cases, assignment prompts, slides, study guides, and supporting files. They stay local and become course source material for flashcards and quizzes.</p>
           </div>
         ) : (
-          <div className="space-y-1">
-            <div className="text-2xs font-bold uppercase tracking-wider text-white/50">Course library</div>
-            {materialNotes.map(note => {
-              const record = imported.find(r => r.noteId === note.id)
-              const label = record?.path.split('/').pop() ?? note.title
-              const usage = record ? countMaterialUsages(notes, record.path) : 0
-              return (
+          <div className="materials-library-grid">
+            <section className="materials-library-panel">
+              <div className="materials-library-toolbar">
+                <div>
+                  <div className="materials-library-eyebrow">Course library</div>
+                  <span>{materialCards.length} source material{materialCards.length === 1 ? '' : 's'}</span>
+                </div>
                 <button
-                  key={note.id}
-                  onClick={() => onSelectNote(note)}
-                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06]"
-                  title={record ? record.path : 'Uploaded directly into this course'}
+                  className="materials-library-edit"
+                  disabled={!selectedMaterial}
+                  onClick={() => selectedMaterial && onSelectNote(selectedMaterial.note)}
                 >
-                  <FileText size={13} className="text-white/45 shrink-0" />
-                  <span className="flex-1 min-w-0">
-                    <span className="block truncate text-md text-white/90">{label}</span>
-                    <span className="block truncate text-2xs text-white/40">
-                      {record ? 'Watched folder import' : 'Direct course upload'}
-                      {' · '}
-                      {(note.documentType ?? 'note').replace('_', ' ')}
-                      {' · '}
-                      Updated {new Date(note.updatedAt).toLocaleDateString()}
-                    </span>
-                  </span>
-                  {usage > 0 && (
-                    <span className="text-2xs px-1.5 py-0.5 rounded-full bg-white/[0.08] text-white/70 shrink-0 tabular-nums">
-                      {usage}× cited
-                    </span>
-                  )}
-                  <span className="text-2xs text-white/40 shrink-0">{(note.tags ?? []).slice(0, 2).join(', ')}</span>
+                  Edit note
                 </button>
-              )
-            })}
+              </div>
+              <div className="materials-hidden-upload" aria-hidden="true">
+                {uploadDropZone}
+              </div>
+              <div className="materials-library-filters" role="tablist" aria-label="Material type filter">
+                <button
+                  className={cn(materialFilter === 'all' && 'active')}
+                  onClick={() => setMaterialFilter('all')}
+                  role="tab"
+                  aria-selected={materialFilter === 'all'}
+                >
+                  All <span>{materialCards.length}</span>
+                </button>
+                {materialCounts.map(option => (
+                  <button
+                    key={option.kind}
+                    className={cn(materialFilter === option.kind && 'active')}
+                    onClick={() => setMaterialFilter(option.kind)}
+                    role="tab"
+                    aria-selected={materialFilter === option.kind}
+                  >
+                    {option.label} <span>{option.count}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="materials-library-list">
+                {visibleMaterials.length === 0 ? (
+                  <CourseCalendarEmpty text={`No ${materialKindOptions.find(option => option.kind === materialFilter)?.label.toLowerCase() ?? 'materials'} attached yet.`} />
+                ) : visibleMaterials.map(item => (
+                  <button
+                    key={item.note.id}
+                    onClick={() => setSelectedMaterialId(item.note.id)}
+                    className={cn('materials-library-item', selectedMaterial?.note.id === item.note.id && 'active')}
+                    title={item.record ? item.record.path : 'Uploaded directly into this course'}
+                  >
+                    <FileText size={13} />
+                    <span>
+                      <strong>{item.label}</strong>
+                      <em>
+                        {item.kind.label}
+                        {' · '}
+                        {item.record ? 'Watched folder' : 'Direct upload'}
+                        {' · '}
+                        Updated {new Date(item.note.updatedAt).toLocaleDateString()}
+                      </em>
+                    </span>
+                    {item.usage > 0 && <small>{item.usage}× cited</small>}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="materials-reader-panel">
+              {selectedMaterial ? (
+                <MaterialFileViewer
+                  note={selectedMaterial.note}
+                  course={selectedCourse}
+                  filename={selectedMaterial.label}
+                  materialType={selectedMaterial.kind.label}
+                  sourcePath={selectedMaterial.record?.path}
+                  sourceLabel={selectedMaterial.record ? 'Watched folder' : 'Direct upload'}
+                  onCaptureCreated={() => {
+                    onRefresh()
+                    onStatus('Highlight saved as a source-linked capture.')
+                  }}
+                />
+              ) : (
+                <CourseCalendarEmpty text="Select a material to read it here." />
+              )}
+            </section>
           </div>
         )}
 
         {manualMaterials.length > 0 && imported.length > 0 && (
-          <div className="text-2xs text-white/35">
+          <div className="materials-library-footnote">
             {manualMaterials.length} direct upload{manualMaterials.length === 1 ? '' : 's'} and {imported.length} watched-folder import{imported.length === 1 ? '' : 's'} are grouped together as course materials.
           </div>
         )}

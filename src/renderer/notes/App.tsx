@@ -1682,7 +1682,7 @@ function WorkspaceSurface({
       // Ticket 1.1: materials gets its own tab now. The right-rail
       // Materials slot still exists for course-context-while-editing,
       // but the canonical surface is here.
-      return <MaterialsView selectedCourse={currentCourse} notes={notes} onCreateFromFile={onCreateFromFile} onSelectNote={onSelect} onRefresh={onRefresh} onStatus={onStatus} />
+      return <MaterialsView selectedCourse={currentCourse} notes={notes} studyItems={studyItems} onCreateFromFile={onCreateFromFile} onSelectNote={onSelect} onRefresh={onRefresh} onStatus={onStatus} />
     case 'assignment':
       return <AssignmentParserView selected={selected} selectedText={selectedText} courseId={currentCourse?.id} deadlines={deadlines} onSave={onAssignmentSave} />
     case 'syllabus':
@@ -2478,10 +2478,11 @@ function inferMaterialKind(name: string, documentType?: Note['documentType']): {
 // action. When no course is selected we tell the user to pick one
 // (folder watcher is per-course).
 function MaterialsView({
-  selectedCourse, notes, onCreateFromFile, onSelectNote, onRefresh, onStatus,
+  selectedCourse, notes, studyItems, onCreateFromFile, onSelectNote, onRefresh, onStatus,
 }: {
   selectedCourse?: Course
   notes: Note[]
+  studyItems: StudyItem[]
   onCreateFromFile: (input: { title: string; content: string; docJson?: unknown; courseId?: string; documentType?: Note['documentType'] }) => Promise<string>
   onSelectNote: (n: Note) => void
   onRefresh: () => void
@@ -2490,6 +2491,9 @@ function MaterialsView({
   const [pickingFolder, setPickingFolder] = useState(false)
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null)
   const [materialFilter, setMaterialFilter] = useState<MaterialKind | 'all'>('all')
+  const [showFlashcardReview, setShowFlashcardReview] = useState(false)
+  const [flashcardCandidates, setFlashcardCandidates] = useState<ReadonlyArray<import('./lib/extractCards').CardCandidate>>([])
+  const [flashcardSourceNote, setFlashcardSourceNote] = useState<Note | null>(null)
   if (!selectedCourse) {
     return (
       <section className="phase3-card">
@@ -2539,6 +2543,14 @@ function MaterialsView({
     count: materialCards.filter(item => item.kind.kind === option.kind).length,
   }))
   const uploadRegionId = `materials-upload-${selectedCourse.id}`
+  async function openMaterialFlashcards(note: Note) {
+    const { extractCardCandidates } = await import('./lib/extractCards')
+    const candidates = extractCardCandidates(note.content)
+    setFlashcardSourceNote(note)
+    setFlashcardCandidates(candidates)
+    setShowFlashcardReview(true)
+  }
+
   const uploadDropZone = (
     <div id={uploadRegionId}>
       <FileDropZone
@@ -2679,6 +2691,7 @@ function MaterialsView({
                     onRefresh()
                     onStatus('Highlight saved as a source-linked capture.')
                   }}
+                  onExtractFlashcards={() => void openMaterialFlashcards(selectedMaterial.note)}
                 />
               ) : (
                 <CourseCalendarEmpty text="Select a material to read it here." />
@@ -2693,6 +2706,35 @@ function MaterialsView({
           </div>
         )}
       </div>
+      <QuizMeBackModal
+        open={showFlashcardReview}
+        onClose={() => setShowFlashcardReview(false)}
+        candidates={flashcardCandidates}
+        existingFronts={studyItems.map(s => s.front ?? '')}
+        onCommit={async (kept) => {
+          const sourceNote = flashcardSourceNote
+          if (!sourceNote) return
+          let created = 0
+          try {
+            for (const candidate of kept) {
+              await ipc.invoke('study:create', {
+                courseId: sourceNote.courseId ?? selectedCourse.id,
+                sourceNoteId: sourceNote.id,
+                sourceCardKey: candidate.cardKey,
+                type: 'flashcard',
+                front: candidate.front,
+                back: candidate.back,
+              })
+              created++
+            }
+            onStatus(`${created} source-linked card${created === 1 ? '' : 's'} added from "${sourceNote.title || 'material'}".`)
+            onRefresh()
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err)
+            onStatus(`Saved ${created}/${kept.length} card${created === 1 ? '' : 's'} before failing: ${msg}`)
+          }
+        }}
+      />
     </section>
   )
 }

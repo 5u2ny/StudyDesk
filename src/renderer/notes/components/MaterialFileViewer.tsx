@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertCircle, ChevronLeft, ChevronRight, ExternalLink, Eye, FileText, Presentation } from 'lucide-react'
+import { AlertCircle, ChevronLeft, ChevronRight, ExternalLink, Eye, FileText, Layers, Presentation } from 'lucide-react'
 import type { Course, Note } from '@schema'
 import { ipc } from '@shared/ipc-client'
 import { MaterialsReaderView } from './MaterialsReaderView'
@@ -13,6 +13,7 @@ interface MaterialFileViewerProps {
   sourcePath?: string
   sourceLabel?: string
   onCaptureCreated?: () => void
+  onExtractFlashcards?: () => void
 }
 
 type PdfLoadStatus = 'idle' | 'loading' | 'ready' | 'error'
@@ -346,6 +347,7 @@ export function MaterialFileViewer({
   sourcePath,
   sourceLabel,
   onCaptureCreated,
+  onExtractFlashcards,
 }: MaterialFileViewerProps) {
   const hasSourcePath = Boolean(sourcePath)
   const extension = useMemo(() => getFileExtension(filename, sourcePath), [filename, sourcePath])
@@ -461,6 +463,17 @@ export function MaterialFileViewer({
             <Eye size={14} />
             Preview
           </span>
+          {onExtractFlashcards && (
+            <button
+              className="material-file-open-source"
+              onClick={onExtractFlashcards}
+              aria-label="Extract flashcards"
+              title="Extract flashcard candidates from this material"
+            >
+              <Layers size={14} />
+              <span>Extract Flashcards</span>
+            </button>
+          )}
           <button
             className="material-file-open-source"
             onClick={handleOpenSource}

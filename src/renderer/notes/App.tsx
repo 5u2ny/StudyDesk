@@ -2506,6 +2506,8 @@ function MaterialsView({
   const imported = (selectedCourse.materialsImportedFiles ?? []).filter(r => r.noteId)
   const importedNoteIds = new Set(imported.map(r => r.noteId).filter(Boolean))
   const importedByNoteId = new Map(imported.map(r => [r.noteId, r]))
+  const directUploadImports = imported.filter(r => r.sourceKind === 'direct_upload').length
+  const watchedFolderImports = imported.filter(r => r.sourceKind !== 'direct_upload').length
   const materialNotes = notes
     .filter(n =>
       n.courseId === selectedCourse.id &&
@@ -2515,10 +2517,16 @@ function MaterialsView({
   const manualMaterials = materialNotes.filter(n => !importedNoteIds.has(n.id))
   const materialCards = materialNotes.map(note => {
     const record = importedByNoteId.get(note.id)
-    const label = record?.path.split('/').pop() ?? note.title
-    const usage = record ? countMaterialUsages(notes, record.path) : 0
-    const kind = inferMaterialKind(record?.path ?? note.title, note.documentType)
-    return { note, record, label, usage, kind }
+    const sourcePath = record?.storedPath ?? record?.path
+    const label = record?.originalFilename ?? sourcePath?.split('/').pop() ?? note.title
+    const usage = sourcePath ? countMaterialUsages(notes, sourcePath) : 0
+    const kind = inferMaterialKind(label, note.documentType)
+    const sourceLabel = record?.sourceKind === 'direct_upload'
+      ? 'Direct upload'
+      : record
+        ? 'Watched folder'
+        : 'Extracted text'
+    return { note, record, sourcePath, sourceLabel, label, usage, kind }
   })
   const visibleMaterials = materialFilter === 'all'
     ? materialCards
@@ -2542,6 +2550,7 @@ function MaterialsView({
           onRefresh()
           onStatus('Material added to this course.')
         }}
+        onWarning={onStatus}
       />
     </div>
   )
@@ -2638,7 +2647,7 @@ function MaterialsView({
                     key={item.note.id}
                     onClick={() => setSelectedMaterialId(item.note.id)}
                     className={cn('materials-library-item', selectedMaterial?.note.id === item.note.id && 'active')}
-                    title={item.record ? item.record.path : 'Uploaded directly into this course'}
+                    title={item.sourceLabel}
                   >
                     <FileText size={13} />
                     <span>
@@ -2646,7 +2655,7 @@ function MaterialsView({
                       <em>
                         {item.kind.label}
                         {' · '}
-                        {item.record ? 'Watched folder' : 'Direct upload'}
+                        {item.sourceLabel}
                         {' · '}
                         Updated {new Date(item.note.updatedAt).toLocaleDateString()}
                       </em>
@@ -2664,8 +2673,8 @@ function MaterialsView({
                   course={selectedCourse}
                   filename={selectedMaterial.label}
                   materialType={selectedMaterial.kind.label}
-                  sourcePath={selectedMaterial.record?.path}
-                  sourceLabel={selectedMaterial.record ? 'Watched folder' : 'Direct upload'}
+                  sourcePath={selectedMaterial.sourcePath}
+                  sourceLabel={selectedMaterial.sourceLabel}
                   onCaptureCreated={() => {
                     onRefresh()
                     onStatus('Highlight saved as a source-linked capture.')
@@ -2678,9 +2687,9 @@ function MaterialsView({
           </div>
         )}
 
-        {manualMaterials.length > 0 && imported.length > 0 && (
+        {(manualMaterials.length > 0 || directUploadImports > 0) && watchedFolderImports > 0 && (
           <div className="materials-library-footnote">
-            {manualMaterials.length} direct upload{manualMaterials.length === 1 ? '' : 's'} and {imported.length} watched-folder import{imported.length === 1 ? '' : 's'} are grouped together as course materials.
+            {manualMaterials.length + directUploadImports} direct upload{manualMaterials.length + directUploadImports === 1 ? '' : 's'} and {watchedFolderImports} watched-folder import{watchedFolderImports === 1 ? '' : 's'} are grouped together as course materials.
           </div>
         )}
       </div>
@@ -3164,6 +3173,7 @@ function DocumentWorkspace({
             documentType="reading"
             onCreate={onCreateFromFile}
             onCreated={() => onRefresh()}
+            onWarning={onStatus}
           />
           <div className="notes-empty-actions">
             <button className="notes-create-btn" onClick={() => onCreate('note')}>New blank note</button>

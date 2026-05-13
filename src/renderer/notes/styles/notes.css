@@ -6582,6 +6582,7 @@ textarea,
 .add-course-modal {
   width: 90%;
   max-width: 480px;
+  max-height: 88vh;
   background: var(--sd-fg-base);
   border: 1px solid var(--sd-line);
   border-radius: 14px;
@@ -6589,6 +6590,9 @@ textarea,
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+.add-course-modal-wide {
+  max-width: 880px;
 }
 .add-course-modal-head {
   display: flex;
@@ -6632,6 +6636,7 @@ textarea,
   display: flex;
   flex-direction: column;
   gap: 14px;
+  overflow-y: auto;
 }
 .add-course-field {
   display: flex;
@@ -6693,6 +6698,158 @@ textarea,
 }
 .add-course-submit {
   min-width: 120px;
+}
+.add-course-error {
+  margin: 0 20px 14px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--sd-danger, #ef4444) 35%, transparent);
+  background: color-mix(in srgb, var(--sd-danger, #ef4444) 12%, transparent);
+  color: var(--sd-ink);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.add-course-error button {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 16px;
+}
+.add-course-review-body {
+  max-height: 58vh;
+}
+.add-course-review-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 14px;
+}
+.add-course-review-panel {
+  border: 1px solid var(--sd-line);
+  border-radius: 10px;
+  background: var(--sd-bg);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.add-course-review-panel h3 {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--sd-ink);
+}
+.add-course-review-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.add-course-review-form label,
+.add-course-review-check {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--sd-ink-soft);
+}
+.add-course-review-form input,
+.add-course-review-check input {
+  width: 100%;
+  margin-top: 3px;
+  padding: 6px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--sd-line);
+  background: var(--sd-fg-base);
+  color: var(--sd-ink);
+  font-size: 12px;
+}
+.add-course-review-row,
+.add-course-review-check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--sd-fg-base);
+  border: 1px solid var(--sd-line);
+}
+.add-course-review-check > input {
+  width: auto;
+  margin-top: 8px;
+}
+.add-course-review-check span,
+.add-course-review-row div {
+  flex: 1;
+  min-width: 0;
+}
+.add-course-review-row strong {
+  display: block;
+  font-size: 12px;
+  color: var(--sd-ink);
+}
+.add-course-review-row span,
+.add-course-review-check em,
+.add-course-review-muted {
+  display: block;
+  font-size: 11px;
+  color: var(--sd-ink-soft);
+  font-style: normal;
+  line-height: 1.4;
+}
+.add-course-review-check em input {
+  width: auto;
+  max-width: 140px;
+  margin-left: 2px;
+}
+.add-course-created-summary,
+.add-course-material-list {
+  border: 1px solid var(--sd-line);
+  border-radius: 10px;
+  background: var(--sd-bg);
+}
+.add-course-created-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+}
+.add-course-created-summary span {
+  background: var(--sd-fg-base);
+  padding: 10px;
+  font-size: 12px;
+  color: var(--sd-ink);
+  text-align: center;
+}
+.add-course-material-list {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.add-course-material-list div {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--sd-line);
+}
+.add-course-material-list div:last-child {
+  border-bottom: 0;
+}
+.add-course-material-list strong {
+  display: block;
+  font-size: 13px;
+  color: var(--sd-ink);
+}
+.add-course-material-list span {
+  display: block;
+  font-size: 12px;
+  color: var(--sd-ink-soft);
+  margin-top: 2px;
+}
+@media (max-width: 760px) {
+  .add-course-review-grid,
+  .add-course-review-form,
+  .add-course-created-summary {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ── CaptureInbox ────────────────────────────────────────────────────────── */

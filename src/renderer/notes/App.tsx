@@ -432,7 +432,15 @@ export default function App() {
     return () => window.clearInterval(t)
   }, [])
 
-  async function refresh() {
+  function pickDefaultWorkspaceNote(noteData: Note[], courseId?: string, avoidSyllabus = false): Note | null {
+    const scoped = courseId ? noteData.filter(note => note.courseId === courseId) : noteData
+    const nonSyllabus = scoped.find(note => note.documentType !== 'syllabus')
+    if (nonSyllabus) return nonSyllabus
+    if (avoidSyllabus) return null
+    return scoped[0] ?? noteData.find(note => note.documentType !== 'syllabus') ?? noteData[0] ?? null
+  }
+
+  async function refresh(options: { defaultCourseId?: string; avoidSyllabusDefault?: boolean } = {}) {
     const [noteData, captureData, courseData, assignmentData, deadlineData, studyData, confusionData, alertData, classData] = await Promise.all([
       ipc.invoke<Note[]>('notes:list'),
       ipc.invoke<Capture[]>('capture:list', { limit: 80 }),
@@ -454,7 +462,15 @@ export default function App() {
     setAlerts(alertData)
     setClassSessions(classData)
     setSelectedAssignmentId(prev => prev && assignmentData.some(a => a.id === prev) ? prev : null)
-    setSelected(prev => prev ? noteData.find(n => n.id === prev.id) ?? noteData[0] ?? null : noteData[0] ?? null)
+    setSelected(prev => {
+      const preserved = prev ? noteData.find(note => note.id === prev.id) ?? null : null
+      if (preserved && (!options.defaultCourseId || preserved.courseId === options.defaultCourseId)) return preserved
+      return pickDefaultWorkspaceNote(
+        noteData,
+        options.defaultCourseId ?? selectedCourseId ?? undefined,
+        options.avoidSyllabusDefault ?? false
+      )
+    })
     // Fetch unlinked captures for the CaptureInbox (non-critical, after all state setters)
     ipc.invoke<Capture[]>('capture:unlinked', { limit: 100 }).then(setUnlinkedCaptures).catch(() => {})
   }
@@ -908,17 +924,17 @@ export default function App() {
                           button. Added with two presets (1h, 1 day) so the
                           common cases don't need a date picker. */}
                       <button
-                        onClick={() => ipc.invoke('attentionAlerts:snooze', { id: alert.id, snoozedUntil: Date.now() + 60 * 60 * 1000 }).then(refresh).catch(() => {})}
+                        onClick={() => ipc.invoke('attentionAlerts:snooze', { id: alert.id, snoozedUntil: Date.now() + 60 * 60 * 1000 }).then(() => refresh()).catch(() => {})}
                         className="px-2 py-0.5 rounded text-2xs font-semibold text-white/55 hover:text-white/85 hover:bg-white/[0.06] transition-colors"
                         title="Snooze for 1 hour"
                       >Snooze 1h</button>
                       <button
-                        onClick={() => ipc.invoke('attentionAlerts:snooze', { id: alert.id, snoozedUntil: Date.now() + 24 * 60 * 60 * 1000 }).then(refresh).catch(() => {})}
+                        onClick={() => ipc.invoke('attentionAlerts:snooze', { id: alert.id, snoozedUntil: Date.now() + 24 * 60 * 60 * 1000 }).then(() => refresh()).catch(() => {})}
                         className="px-2 py-0.5 rounded text-2xs font-semibold text-white/55 hover:text-white/85 hover:bg-white/[0.06] transition-colors"
                         title="Snooze until tomorrow"
                       >Tomorrow</button>
                       <button
-                        onClick={() => ipc.invoke('attentionAlerts:dismiss', { id: alert.id }).then(refresh).catch(() => {})}
+                        onClick={() => ipc.invoke('attentionAlerts:dismiss', { id: alert.id }).then(() => refresh()).catch(() => {})}
                         className="px-2 py-0.5 rounded text-2xs font-semibold text-white/55 hover:text-white/85 hover:bg-white/[0.06] transition-colors"
                       >Dismiss</button>
                     </div>
@@ -1145,8 +1161,22 @@ export default function App() {
   const enterCourse = (courseId: string) => {
     setSelectedCourseId(courseId)
     setAppView('workspace')
-    const firstNote = notes.find(n => n.courseId === courseId)
-    if (firstNote) setSelected(firstNote)
+    setSelected(pickDefaultWorkspaceNote(notes, courseId, true))
+  }
+
+  const handleCourseCreatedFromModal = (course: Course) => {
+    setSelectedCourseId(course.id)
+    setAppView('workspace')
+    setActiveTool('materials')
+    refresh({ defaultCourseId: course.id, avoidSyllabusDefault: true }).catch(() => {})
+  }
+
+  const openCourseMaterialsFromModal = (courseId: string) => {
+    setSelectedCourseId(courseId)
+    setAppView('workspace')
+    setActiveTool('materials')
+    setShowAddCourseModal(false)
+    refresh({ defaultCourseId: courseId, avoidSyllabusDefault: true }).catch(() => {})
   }
 
   if (appView === 'dashboard') {
@@ -1173,7 +1203,8 @@ export default function App() {
         {showAddCourseModal && (
           <AddCourseModal
             onClose={() => setShowAddCourseModal(false)}
-            onCourseCreated={() => { refresh(); setShowAddCourseModal(false) }}
+            onCourseCreated={handleCourseCreatedFromModal}
+            onOpenMaterials={openCourseMaterialsFromModal}
             onStatus={setStatus}
           />
         )}
@@ -1508,7 +1539,8 @@ export default function App() {
       {showAddCourseModal && (
         <AddCourseModal
           onClose={() => setShowAddCourseModal(false)}
-          onCourseCreated={() => { refresh(); setShowAddCourseModal(false) }}
+          onCourseCreated={handleCourseCreatedFromModal}
+          onOpenMaterials={openCourseMaterialsFromModal}
           onStatus={setStatus}
         />
       )}
@@ -1636,7 +1668,7 @@ function WorkspaceSurface({
       // Ticket 1.1: materials gets its own tab now. The right-rail
       // Materials slot still exists for course-context-while-editing,
       // but the canonical surface is here.
-      return <MaterialsView selectedCourse={currentCourse} notes={notes} onSelectNote={onSelect} onRefresh={onRefresh} onStatus={onStatus} />
+      return <MaterialsView selectedCourse={currentCourse} notes={notes} onCreateFromFile={onCreateFromFile} onSelectNote={onSelect} onRefresh={onRefresh} onStatus={onStatus} />
     case 'assignment':
       return <AssignmentParserView selected={selected} selectedText={selectedText} courseId={currentCourse?.id} deadlines={deadlines} onSave={onAssignmentSave} />
     case 'syllabus':
@@ -1757,10 +1789,11 @@ function DeadlinesView({
 // action. When no course is selected we tell the user to pick one
 // (folder watcher is per-course).
 function MaterialsView({
-  selectedCourse, notes, onSelectNote, onRefresh, onStatus,
+  selectedCourse, notes, onCreateFromFile, onSelectNote, onRefresh, onStatus,
 }: {
   selectedCourse?: Course
   notes: Note[]
+  onCreateFromFile: (input: { title: string; content: string; docJson?: unknown; courseId?: string; documentType?: Note['documentType'] }) => Promise<string>
   onSelectNote: (n: Note) => void
   onRefresh: () => void
   onStatus: (msg: string) => void
@@ -1780,13 +1813,22 @@ function MaterialsView({
     )
   }
   const imported = (selectedCourse.materialsImportedFiles ?? []).filter(r => r.noteId)
+  const importedNoteIds = new Set(imported.map(r => r.noteId).filter(Boolean))
+  const readingNotes = notes
+    .filter(n => n.courseId === selectedCourse.id && n.documentType === 'reading')
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+  const manualReadings = readingNotes.filter(n => !importedNoteIds.has(n.id))
   return (
     <section className="phase3-card">
       <header className="phase3-header">
         <div>
           <p className="phase3-eyebrow">Materials</p>
           <h1>{selectedCourse.code ?? selectedCourse.name}</h1>
-          <span>{imported.length === 0 ? 'No imports yet — pick a folder to start auto-watching.' : `${imported.length} file${imported.length === 1 ? '' : 's'} auto-watched.`}</span>
+          <span>
+            {readingNotes.length === 0
+              ? 'No readings yet — upload a file or pick a watched folder.'
+              : `${readingNotes.length} reading${readingNotes.length === 1 ? '' : 's'} available for study tools.`}
+          </span>
         </div>
         <div className="phase3-actions">
           <button
@@ -1821,39 +1863,62 @@ function MaterialsView({
           ><Upload size={15} /> Publish as static site</button>
         </div>
       </header>
-      {imported.length === 0 ? (
-        <div className="px-6 py-8 text-center text-white/45 text-md">
-          Drop a folder of PDFs / Markdown files into this course and StudyDesk will keep it in sync as you edit.
-        </div>
-      ) : (
-        <div className="px-4 pb-4 space-y-1">
-          {imported.map(r => {
-            const note = notes.find(n => n.id === r.noteId)
-            const fname = r.path.split('/').pop()
-            const usage = countMaterialUsages(notes, r.path)
-            return (
-              <button
-                key={r.path}
-                onClick={note ? () => onSelectNote(note) : undefined}
-                disabled={!note}
-                className={cn(
-                  'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors',
-                  note ? 'bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06]' : 'bg-white/[0.02] border border-white/[0.04] cursor-default'
-                )}
-              >
-                <FileText size={13} className="text-white/45 shrink-0" />
-                <span className="flex-1 min-w-0 truncate text-md text-white/90">{fname}</span>
-                {usage > 0 && (
-                  <span className="text-2xs px-1.5 py-0.5 rounded-full bg-white/[0.08] text-white/70 shrink-0 tabular-nums">
-                    {usage}× cited
+      <div className="px-4 pb-4 space-y-4">
+        <FileDropZone
+          courseId={selectedCourse.id}
+          documentType="reading"
+          onCreate={onCreateFromFile}
+          onCreated={() => {
+            onRefresh()
+            onStatus('Material added to this course.')
+          }}
+        />
+
+        {readingNotes.length === 0 ? (
+          <div className="px-2 py-8 text-center text-white/45 text-md">
+            Upload PDFs, DOCX, Markdown, or text files. They stay local and become course readings for flashcards and quizzes.
+          </div>
+        ) : (
+          <div className="space-y-1">
+            <div className="text-2xs font-bold uppercase tracking-wider text-white/50">Course library</div>
+            {readingNotes.map(note => {
+              const record = imported.find(r => r.noteId === note.id)
+              const label = record?.path.split('/').pop() ?? note.title
+              const usage = record ? countMaterialUsages(notes, record.path) : 0
+              return (
+                <button
+                  key={note.id}
+                  onClick={() => onSelectNote(note)}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06]"
+                  title={record ? record.path : 'Uploaded directly into this course'}
+                >
+                  <FileText size={13} className="text-white/45 shrink-0" />
+                  <span className="flex-1 min-w-0">
+                    <span className="block truncate text-md text-white/90">{label}</span>
+                    <span className="block truncate text-2xs text-white/40">
+                      {record ? 'Watched folder import' : 'Direct course upload'}
+                      {' · '}
+                      Updated {new Date(note.updatedAt).toLocaleDateString()}
+                    </span>
                   </span>
-                )}
-                <span className="text-2xs text-white/40 shrink-0">{new Date(r.importedAt).toLocaleDateString()}</span>
-              </button>
-            )
-          })}
-        </div>
-      )}
+                  {usage > 0 && (
+                    <span className="text-2xs px-1.5 py-0.5 rounded-full bg-white/[0.08] text-white/70 shrink-0 tabular-nums">
+                      {usage}× cited
+                    </span>
+                  )}
+                  <span className="text-2xs text-white/40 shrink-0">{(note.tags ?? []).slice(0, 2).join(', ')}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {manualReadings.length > 0 && imported.length > 0 && (
+          <div className="text-2xs text-white/35">
+            {manualReadings.length} direct upload{manualReadings.length === 1 ? '' : 's'} and {imported.length} watched-folder import{imported.length === 1 ? '' : 's'} are grouped together as course materials.
+          </div>
+        )}
+      </div>
     </section>
   )
 }

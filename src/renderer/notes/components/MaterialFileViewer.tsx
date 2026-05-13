@@ -16,6 +16,7 @@ interface MaterialFileViewerProps {
 }
 
 type PdfLoadStatus = 'idle' | 'loading' | 'ready' | 'error'
+type DocxLoadStatus = 'idle' | 'loading' | 'ready' | 'error'
 type FilePreviewKind = 'pdf' | 'docx' | 'pptx' | 'image' | 'text' | 'unsupported'
 
 function getFileExtension(filename: string, sourcePath?: string): string {
@@ -46,6 +47,28 @@ function toUint8Array(value: unknown): Uint8Array {
     return new Uint8Array((value as { data: number[] }).data)
   }
   throw new Error('Could not read PDF bytes from the source file.')
+}
+
+function toArrayBuffer(value: unknown): ArrayBuffer {
+  const bytes = toUint8Array(value)
+  const buffer = new ArrayBuffer(bytes.byteLength)
+  new Uint8Array(buffer).set(bytes)
+  return buffer
+}
+
+function sanitizeDocxHtml(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  doc.querySelectorAll('script, style, iframe, object, embed, link, meta').forEach(node => node.remove())
+  doc.body.querySelectorAll('*').forEach(element => {
+    for (const attr of Array.from(element.attributes)) {
+      const name = attr.name.toLowerCase()
+      const value = attr.value.trim().toLowerCase()
+      if (name.startsWith('on') || value.startsWith('javascript:')) {
+        element.removeAttribute(attr.name)
+      }
+    }
+  })
+  return doc.body.innerHTML
 }
 
 function PdfPreview({
@@ -194,6 +217,99 @@ function PdfPreview({
   )
 }
 
+function DocxPreview({
+  sourcePath,
+  filename,
+  onOpenSource,
+}: {
+  sourcePath: string
+  filename: string
+  onOpenSource: () => void
+}) {
+  const [status, setStatus] = useState<DocxLoadStatus>('idle')
+  const [html, setHtml] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    setStatus('loading')
+    setError(null)
+    setHtml('')
+
+    async function loadDocument() {
+      try {
+        const bytes = await ipc.invoke<ArrayBuffer>('folder:readFile', { path: sourcePath })
+        if (cancelled) return
+        const mammoth = await import('mammoth')
+        if (cancelled) return
+        const result = await mammoth.convertToHtml({ arrayBuffer: toArrayBuffer(bytes) })
+        if (cancelled) return
+        const cleanHtml = sanitizeDocxHtml(result.value || '')
+        setHtml(cleanHtml)
+        setStatus('ready')
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : String(err))
+        setStatus('error')
+      }
+    }
+
+    void loadDocument()
+
+    return () => {
+      cancelled = true
+    }
+  }, [sourcePath])
+
+  if (status === 'loading' || status === 'idle') {
+    return (
+      <div className="material-file-preview-state">
+        <div className="material-file-preview-icon"><FileText size={22} /></div>
+        <h3>Loading DOCX preview</h3>
+        <p>{filename}</p>
+      </div>
+    )
+  }
+
+  if (status === 'error') {
+    return (
+      <div className="material-file-preview-state error">
+        <div className="material-file-preview-icon"><AlertCircle size={22} /></div>
+        <h3>Could not render DOCX preview</h3>
+        <p>{error ?? 'The Word document could not be rendered inside StudyDesk.'}</p>
+        <button className="material-file-primary-action" onClick={onOpenSource}>
+          <ExternalLink size={14} />
+          <span>Open in system viewer</span>
+        </button>
+      </div>
+    )
+  }
+
+  if (!html.trim()) {
+    return (
+      <div className="material-file-preview-state">
+        <div className="material-file-preview-icon"><FileText size={22} /></div>
+        <h3>No readable DOCX content found</h3>
+        <p>StudyDesk opened the Word file locally, but Mammoth did not find readable document content.</p>
+        <button className="material-file-primary-action" onClick={onOpenSource}>
+          <ExternalLink size={14} />
+          <span>Open in system viewer</span>
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="docx-preview-view" aria-label={`Preview of ${filename}`}>
+      <article
+        className="docx-preview-content"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    </div>
+  )
+}
+
 function FilePreviewFallback({
   icon,
   title,
@@ -268,13 +384,11 @@ export function MaterialFileViewer({
       )
     }
 
-    if (previewKind === 'docx') {
+    if (previewKind === 'docx' && sourcePath) {
       return (
-        <FilePreviewFallback
-          icon={<FileText size={22} />}
-          title="DOCX preview is next"
-          body="This viewer is ready for a local DOCX HTML preview path. The next patch can wire mammoth without treating Word files as extracted text forever."
-          canOpenSource
+        <DocxPreview
+          sourcePath={sourcePath}
+          filename={filename || note.title || 'Course material'}
           onOpenSource={handleOpenSource}
         />
       )

@@ -139,8 +139,10 @@ interface QuizQuestionDraft {
 }
 
 interface StudySourceInfo {
-  note: Note
+  note?: Note
+  capture?: Capture
   title: string
+  kind: 'material' | 'note' | 'capture'
   isMaterial: boolean
   sourcePath?: string
 }
@@ -231,20 +233,42 @@ function countMaterialUsages(notes: Note[], materialPath: string): number {
   return count
 }
 
-function getStudySourceInfo(item: StudyItem, notes: Note[], courses: Course[]): StudySourceInfo | null {
-  if (!item.sourceNoteId) return null
-  const note = notes.find(n => n.id === item.sourceNoteId)
-  if (!note) return null
-  const record = courses
-    .flatMap(course => course.materialsImportedFiles ?? [])
-    .find(r => r.noteId === note.id)
-  const sourcePath = record?.storedPath ?? record?.path
-  return {
-    note,
-    title: record?.originalFilename ?? sourcePath?.split('/').pop() ?? note.title ?? 'Source material',
-    isMaterial: Boolean(record),
-    sourcePath,
+function getStudySourceInfo(item: StudyItem, notes: Note[], courses: Course[], captures: Capture[]): StudySourceInfo | null {
+  if (item.sourceNoteId) {
+    const note = notes.find(n => n.id === item.sourceNoteId)
+    if (note) {
+      const record = courses
+        .flatMap(course => course.materialsImportedFiles ?? [])
+        .find(r => r.noteId === note.id)
+      const sourcePath = record?.storedPath ?? record?.path
+      return {
+        note,
+        title: record?.originalFilename ?? sourcePath?.split('/').pop() ?? note.title ?? 'Source material',
+        kind: record ? 'material' : 'note',
+        isMaterial: Boolean(record),
+        sourcePath,
+      }
+    }
   }
+  if (item.sourceCaptureId) {
+    const capture = captures.find(c => c.id === item.sourceCaptureId)
+    if (capture) {
+      const source = capture.sourceApp ? ` from ${capture.sourceApp}` : ''
+      return {
+        capture,
+        title: `Capture${source}`,
+        kind: 'capture',
+        isMaterial: false,
+      }
+    }
+  }
+  return null
+}
+
+function studySourceLabel(source: StudySourceInfo): string {
+  if (source.kind === 'material') return 'Source material'
+  if (source.kind === 'capture') return 'Source capture'
+  return 'Source note'
 }
 
 function firstUsefulLine(text: string): string {
@@ -685,7 +709,7 @@ export default function App() {
   const dueStudyItems = visibleStudyItems.filter(i => !i.nextReviewAt || i.nextReviewAt <= now)
   const unresolvedConfusions = visibleConfusions.filter(c => c.status !== 'resolved')
   const activeAlerts = visibleAlerts.filter(a => a.status !== 'resolved' && a.status !== 'dismissed')
-  const studySourceFor = useCallback((item: StudyItem) => getStudySourceInfo(item, notes, courses), [notes, courses])
+  const studySourceFor = useCallback((item: StudyItem) => getStudySourceInfo(item, notes, courses, captures), [notes, courses, captures])
 
   function openStudyItemSource(item: StudyItem) {
     const source = studySourceFor(item)
@@ -693,12 +717,22 @@ export default function App() {
       setStatus('No source is linked for this study item.')
       return
     }
-    const courseId = source.note.courseId ?? item.courseId
+    const courseId = source.note?.courseId ?? source.capture?.courseId ?? item.courseId
     if (courseId) setSelectedCourseId(courseId)
     setAppView('workspace')
-    if (source.isMaterial && source.sourcePath) {
+    if (source.kind === 'material' && source.note && source.sourcePath) {
       setFocusedMaterialNoteId(source.note.id)
       setActiveTool('materials')
+      return
+    }
+    if (source.kind === 'capture') {
+      setFocusedMaterialNoteId(null)
+      setActiveTool('today')
+      setStatus('Opened source capture context.')
+      return
+    }
+    if (!source.note) {
+      setStatus('Source record is no longer available.')
       return
     }
     setFocusedMaterialNoteId(null)
@@ -1140,7 +1174,7 @@ export default function App() {
                   <div className="text-2xs text-white/45 mt-0.5 capitalize">{item.type}</div>
                   {source && (
                     <div className="study-source-strip">
-                      <span>{source.isMaterial ? 'Source material' : 'Source note'}: {source.title}</span>
+                      <span>{studySourceLabel(source)}: {source.title}</span>
                       <button onClick={() => openStudyItemSource(item)}>Open source</button>
                     </div>
                   )}
@@ -1631,6 +1665,8 @@ export default function App() {
         open={panicOpen}
         onClose={() => setPanicOpen(false)}
         items={selectPanicItems(visibleStudyItems, { courseId: currentCourse?.id, limit: 20 })}
+        getStudySourceInfo={studySourceFor}
+        onOpenStudyItemSource={openStudyItemSource}
         onReview={async (id, difficulty) => {
           await reviewStudyItem(id, difficulty)
         }}
@@ -3925,7 +3961,7 @@ function QuizView({
 
             {activeSource && (
               <div className="study-source-strip">
-                <span>{activeSource.isMaterial ? 'Source material' : 'Source note'}: {activeSource.title}</span>
+                <span>{studySourceLabel(activeSource)}: {activeSource.title}</span>
                 <button onClick={() => onOpenStudyItemSource(activeQuestion)}>Open source</button>
               </div>
             )}
@@ -4221,7 +4257,7 @@ function FlashcardsView({
 
             {activeSource && (
               <div className="study-source-strip">
-                <span>{activeSource.isMaterial ? 'Source material' : 'Source note'}: {activeSource.title}</span>
+                <span>{studySourceLabel(activeSource)}: {activeSource.title}</span>
                 <button onClick={() => onOpenStudyItemSource(activeCard)}>Open source</button>
               </div>
             )}

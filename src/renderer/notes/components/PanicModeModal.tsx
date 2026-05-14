@@ -7,15 +7,29 @@
 import React from 'react'
 import { Brain, X as XIcon, Zap } from 'lucide-react'
 import type { PanicItem } from '../lib/panicMode'
+import type { StudyItem } from '@schema'
+
+interface StudySourceInfo {
+  title: string
+  kind: 'material' | 'note' | 'capture'
+}
 
 interface Props {
   open: boolean
   onClose: () => void
   items: ReadonlyArray<PanicItem>
   onReview: (id: string, difficulty: 'again' | 'hard' | 'good' | 'easy') => void | Promise<void>
+  getStudySourceInfo: (item: StudyItem) => StudySourceInfo | null
+  onOpenStudyItemSource: (item: StudyItem) => void
 }
 
-export function PanicModeModal({ open, onClose, items, onReview }: Props) {
+function sourceLabel(source: StudySourceInfo): string {
+  if (source.kind === 'material') return 'Source material'
+  if (source.kind === 'capture') return 'Source capture'
+  return 'Source note'
+}
+
+export function PanicModeModal({ open, onClose, items, onReview, getStudySourceInfo, onOpenStudyItemSource }: Props) {
   if (!open) return null
   return (
     <div className="cmdk-backdrop" onClick={onClose} role="presentation">
@@ -38,6 +52,7 @@ export function PanicModeModal({ open, onClose, items, onReview }: Props) {
             // retrievability = more urgent.
             const pct = Math.round(p.retrievability * 100)
             const barColor = pct < 30 ? '#ff6b7a' : pct < 60 ? '#ffb84d' : '#5fa1ff'
+            const source = getStudySourceInfo(p.item)
             return (
               <article key={p.item.id} className="quiz-back-row panic-row">
                 <div className="quiz-back-row-tag">
@@ -49,6 +64,12 @@ export function PanicModeModal({ open, onClose, items, onReview }: Props) {
                 </div>
                 <div className="panic-front">{p.item.front}</div>
                 {p.item.back && <div className="panic-back">{p.item.back}</div>}
+                {source && (
+                  <div className="study-source-strip panic-source-strip">
+                    <span>{sourceLabel(source)}: {source.title}</span>
+                    <button onClick={() => onOpenStudyItemSource(p.item)}>Open source</button>
+                  </div>
+                )}
                 <div className="quiz-back-row-actions">
                   {(['again', 'hard', 'good', 'easy'] as const).map(d => (
                     <button

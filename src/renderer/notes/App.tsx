@@ -138,6 +138,13 @@ interface QuizQuestionDraft {
   answer?: string
 }
 
+interface StudySourceInfo {
+  note: Note
+  title: string
+  isMaterial: boolean
+  sourcePath?: string
+}
+
 // Ticket 1.1 — IA collapse 10 → 6 visible tabs.
 // The type union still carries every tool id so the demoted ones
 // (dashboard / quiz / assignment / syllabus / map / timeline) remain
@@ -222,6 +229,22 @@ function countMaterialUsages(notes: Note[], materialPath: string): number {
     if (found) count++
   }
   return count
+}
+
+function getStudySourceInfo(item: StudyItem, notes: Note[], courses: Course[]): StudySourceInfo | null {
+  if (!item.sourceNoteId) return null
+  const note = notes.find(n => n.id === item.sourceNoteId)
+  if (!note) return null
+  const record = courses
+    .flatMap(course => course.materialsImportedFiles ?? [])
+    .find(r => r.noteId === note.id)
+  const sourcePath = record?.storedPath ?? record?.path
+  return {
+    note,
+    title: record?.originalFilename ?? sourcePath?.split('/').pop() ?? note.title ?? 'Source material',
+    isMaterial: Boolean(record),
+    sourcePath,
+  }
 }
 
 function firstUsefulLine(text: string): string {
@@ -382,6 +405,7 @@ export default function App() {
   const [quickAdd, setQuickAdd] = useState<QuickAddKind | null>(initialQuickAddKind)
   const [quickAddForm, setQuickAddForm] = useState<QuickAddForm>(initialQuickAddKind ? defaultQuickAddForm(initialQuickAddKind) : { title: '', detail: '', code: '', due: '' })
   const [showAddCourseModal, setShowAddCourseModal] = useState(false)
+  const [focusedMaterialNoteId, setFocusedMaterialNoteId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
   const toggleSection = (key: string) => setExpandedSections(p => ({ ...p, [key]: !p[key] }))
@@ -661,6 +685,26 @@ export default function App() {
   const dueStudyItems = visibleStudyItems.filter(i => !i.nextReviewAt || i.nextReviewAt <= now)
   const unresolvedConfusions = visibleConfusions.filter(c => c.status !== 'resolved')
   const activeAlerts = visibleAlerts.filter(a => a.status !== 'resolved' && a.status !== 'dismissed')
+  const studySourceFor = useCallback((item: StudyItem) => getStudySourceInfo(item, notes, courses), [notes, courses])
+
+  function openStudyItemSource(item: StudyItem) {
+    const source = studySourceFor(item)
+    if (!source) {
+      setStatus('No source is linked for this study item.')
+      return
+    }
+    const courseId = source.note.courseId ?? item.courseId
+    if (courseId) setSelectedCourseId(courseId)
+    setAppView('workspace')
+    if (source.isMaterial && source.sourcePath) {
+      setFocusedMaterialNoteId(source.note.id)
+      setActiveTool('materials')
+      return
+    }
+    setFocusedMaterialNoteId(null)
+    setSelected(source.note)
+    setActiveTool('notes')
+  }
 
   async function handleCreate(type: Note['documentType'] = 'note') {
     const note = await ipc.invoke<Note>('notes:create', { title: type === 'note' ? 'Untitled note' : `New ${type.replace('_', ' ')}`, content: '' })
@@ -1086,26 +1130,35 @@ export default function App() {
         </div>
         {dueStudyItems.length > 0 ? (
           <div className="space-y-1.5">
-            {dueStudyItems.slice(0, 6).map(item => (
-              <div key={item.id} className="px-2.5 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06]">
-                <div className="text-sm font-semibold text-white/90 truncate">{item.front}</div>
-                <div className="text-2xs text-white/45 mt-0.5 capitalize">{item.type}</div>
-                {/* Audit fix (P0.1): Study sub-tab was readonly. Add the
-                    same difficulty buttons the Cards tab uses so a user
-                    can actually grade items from the right rail without
-                    leaving Today. */}
-                <div className="flex items-center gap-1 mt-1.5">
-                  {(['again', 'hard', 'good', 'easy'] as const).map(d => (
-                    <button
-                      key={d}
-                      onClick={() => reviewStudyItem(item.id, d)}
-                      className="flex-1 px-1.5 py-1 rounded text-2xs font-semibold uppercase tracking-wider bg-white/[0.04] hover:bg-white/[0.10] text-white/70 hover:text-white transition-colors"
-                      title={`Mark as ${d}`}
-                    >{d}</button>
-                  ))}
+            {dueStudyItems.slice(0, 6).map(item => {
+              const source = studySourceFor(item)
+              return (
+                <div key={item.id} className="px-2.5 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06]">
+                  <div className="text-sm font-semibold text-white/90 truncate">{item.front}</div>
+                  <div className="text-2xs text-white/45 mt-0.5 capitalize">{item.type}</div>
+                  {source && (
+                    <div className="study-source-strip">
+                      <span>{source.isMaterial ? 'Source material' : 'Source note'}: {source.title}</span>
+                      <button onClick={() => openStudyItemSource(item)}>Open source</button>
+                    </div>
+                  )}
+                  {/* Audit fix (P0.1): Study sub-tab was readonly. Add the
+                      same difficulty buttons the Cards tab uses so a user
+                      can actually grade items from the right rail without
+                      leaving Today. */}
+                  <div className="flex items-center gap-1 mt-1.5">
+                    {(['again', 'hard', 'good', 'easy'] as const).map(d => (
+                      <button
+                        key={d}
+                        onClick={() => reviewStudyItem(item.id, d)}
+                        className="flex-1 px-1.5 py-1 rounded text-2xs font-semibold uppercase tracking-wider bg-white/[0.04] hover:bg-white/[0.10] text-white/70 hover:text-white transition-colors"
+                        title={`Mark as ${d}`}
+                      >{d}</button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         ) : (
           <div className="text-xs text-white/35 italic px-2 py-3">No items due</div>
@@ -1494,6 +1547,9 @@ export default function App() {
           onRemoveFromRiver={removeFromRiver}
           onNavigate={setActiveTool}
           onOpenPanic={() => setPanicOpen(true)}
+          focusedMaterialNoteId={focusedMaterialNoteId}
+          onOpenStudyItemSource={openStudyItemSource}
+          getStudySourceInfo={studySourceFor}
         />
       </MainPanel>
 
@@ -1651,6 +1707,9 @@ function WorkspaceSurface({
   onRemoveFromRiver,
   onNavigate,
   onOpenPanic,
+  focusedMaterialNoteId,
+  onOpenStudyItemSource,
+  getStudySourceInfo,
 }: {
   activeTool: WorkspaceTool
   selected: Note | null
@@ -1691,6 +1750,9 @@ function WorkspaceSurface({
   onNavigate: (tool: WorkspaceTool) => void
   /** Opens the T3 panic-mode modal scoped to current course. */
   onOpenPanic: () => void
+  focusedMaterialNoteId: string | null
+  onOpenStudyItemSource: (item: StudyItem) => void
+  getStudySourceInfo: (item: StudyItem) => StudySourceInfo | null
 }) {
   switch (activeTool) {
     case 'dashboard':
@@ -1710,12 +1772,12 @@ function WorkspaceSurface({
     case 'quiz':
       return <QuizView selected={selected} selectedText={selectedText} courseId={currentCourse?.id} studyItems={studyItems} onSave={onQuizSave} />
     case 'flashcards':
-      return <FlashcardsView selectedText={selectedText} studyItems={studyItems} courseId={currentCourse?.id} onReviewStudyItem={onReviewStudyItem} onSave={onFlashcardSave} onStatus={onStatus} onOpenPanic={onOpenPanic} />
+      return <FlashcardsView selectedText={selectedText} studyItems={studyItems} courseId={currentCourse?.id} onReviewStudyItem={onReviewStudyItem} onSave={onFlashcardSave} onStatus={onStatus} onOpenPanic={onOpenPanic} onOpenStudyItemSource={onOpenStudyItemSource} getStudySourceInfo={getStudySourceInfo} />
     case 'materials':
       // Ticket 1.1: materials gets its own tab now. The right-rail
       // Materials slot still exists for course-context-while-editing,
       // but the canonical surface is here.
-      return <MaterialsView selectedCourse={currentCourse} notes={notes} studyItems={studyItems} onCreateFromFile={onCreateFromFile} onSelectNote={onSelect} onRefresh={onRefresh} onStatus={onStatus} />
+      return <MaterialsView selectedCourse={currentCourse} notes={notes} studyItems={studyItems} focusedMaterialNoteId={focusedMaterialNoteId} onCreateFromFile={onCreateFromFile} onSelectNote={onSelect} onRefresh={onRefresh} onStatus={onStatus} />
     case 'assignment':
       return <AssignmentParserView selected={selected} selectedText={selectedText} courseId={currentCourse?.id} deadlines={deadlines} onSave={onAssignmentSave} />
     case 'syllabus':
@@ -2511,11 +2573,12 @@ function inferMaterialKind(name: string, documentType?: Note['documentType']): {
 // action. When no course is selected we tell the user to pick one
 // (folder watcher is per-course).
 function MaterialsView({
-  selectedCourse, notes, studyItems, onCreateFromFile, onSelectNote, onRefresh, onStatus,
+  selectedCourse, notes, studyItems, focusedMaterialNoteId, onCreateFromFile, onSelectNote, onRefresh, onStatus,
 }: {
   selectedCourse?: Course
   notes: Note[]
   studyItems: StudyItem[]
+  focusedMaterialNoteId: string | null
   onCreateFromFile: (input: { title: string; content: string; docJson?: unknown; courseId?: string; documentType?: Note['documentType'] }) => Promise<string>
   onSelectNote: (n: Note) => void
   onRefresh: () => void
@@ -2530,6 +2593,9 @@ function MaterialsView({
   const [showQuestionReview, setShowQuestionReview] = useState(false)
   const [questionCandidates, setQuestionCandidates] = useState<ReadonlyArray<{ cardKey: string; front: string; back?: string; position: number; source: 'question' }>>([])
   const [questionSourceNote, setQuestionSourceNote] = useState<Note | null>(null)
+  useEffect(() => {
+    if (focusedMaterialNoteId) setSelectedMaterialId(focusedMaterialNoteId)
+  }, [focusedMaterialNoteId])
   if (!selectedCourse) {
     return (
       <section className="phase3-card">
@@ -3723,7 +3789,27 @@ function QuizView({ selected, selectedText, courseId, studyItems, onSave }: { se
   )
 }
 
-function FlashcardsView({ selectedText, studyItems, courseId, onReviewStudyItem, onSave, onStatus, onOpenPanic }: { selectedText: string; studyItems: StudyItem[]; courseId?: string; onReviewStudyItem: (id: string, difficulty: NonNullable<StudyItem['difficulty']>) => Promise<void>; onSave: () => void; onStatus: (msg: string) => void; onOpenPanic: () => void }) {
+function FlashcardsView({
+  selectedText,
+  studyItems,
+  courseId,
+  onReviewStudyItem,
+  onSave,
+  onStatus,
+  onOpenPanic,
+  onOpenStudyItemSource,
+  getStudySourceInfo,
+}: {
+  selectedText: string
+  studyItems: StudyItem[]
+  courseId?: string
+  onReviewStudyItem: (id: string, difficulty: NonNullable<StudyItem['difficulty']>) => Promise<void>
+  onSave: () => void
+  onStatus: (msg: string) => void
+  onOpenPanic: () => void
+  onOpenStudyItemSource: (item: StudyItem) => void
+  getStudySourceInfo: (item: StudyItem) => StudySourceInfo | null
+}) {
   const [drafts, setDrafts] = useState<FlashcardDraft[]>([])
   const [syncing, setSyncing] = useState(false)
 
@@ -3897,19 +3983,28 @@ function FlashcardsView({ selectedText, studyItems, courseId, onReviewStudyItem,
         <>
           <h2 className="section-spacer">Study queue ({studyItems.length})</h2>
           <div className="flashcard-board">
-            {cards.map((item, index) => (
-              <article className="study-card" key={item.id}>
-                <span>Card {index + 1}</span>
-                <h2>{item.front}</h2>
-                <p>{item.back || 'Answer will be added during review.'}</p>
-                <footer><small>{item.type}</small><strong>{item.reviewCount} reviews</strong></footer>
-                <div className="review-actions">
-                  {(['again', 'hard', 'good', 'easy'] as const).map(difficulty => (
-                    <button key={difficulty} onClick={() => onReviewStudyItem(item.id, difficulty)}>{difficulty}</button>
-                  ))}
-                </div>
-              </article>
-            ))}
+            {cards.map((item, index) => {
+              const source = getStudySourceInfo(item)
+              return (
+                <article className="study-card" key={item.id}>
+                  <span>{item.type === 'question' ? 'Question' : 'Card'} {index + 1}</span>
+                  <h2>{item.front}</h2>
+                  <p>{item.back || 'Answer will be added during review.'}</p>
+                  {source && (
+                    <div className="study-source-strip">
+                      <span>{source.isMaterial ? 'Source material' : 'Source note'}: {source.title}</span>
+                      <button onClick={() => onOpenStudyItemSource(item)}>Open source</button>
+                    </div>
+                  )}
+                  <footer><small>{item.type}</small><strong>{item.reviewCount} reviews</strong></footer>
+                  <div className="review-actions">
+                    {(['again', 'hard', 'good', 'easy'] as const).map(difficulty => (
+                      <button key={difficulty} onClick={() => onReviewStudyItem(item.id, difficulty)}>{difficulty}</button>
+                    ))}
+                  </div>
+                </article>
+              )
+            })}
           </div>
         </>
       )}

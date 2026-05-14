@@ -3842,6 +3842,42 @@ body {
   line-height: 1.45;
 }
 
+.study-source-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 7px 8px;
+  border: 1px solid rgba(40, 123, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(40, 123, 255, 0.07);
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.study-source-strip span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.study-source-strip button {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: #7db2ff;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.study-source-strip button:hover {
+  color: #d7e8ff;
+}
+
 .quiz-card div,
 .study-card footer {
   display: flex;

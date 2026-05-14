@@ -235,6 +235,19 @@ body {
 }
 .student-action-strip.slim { grid-template-columns: minmax(0, 1fr) auto; padding: 0; border: 0; background: transparent; margin-bottom: 12px; }
 
+.capture-watch-strip {
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-bottom: 12px;
+}
+
+.capture-watch-strip h3 {
+  margin: 2px 0 0;
+  color: rgba(15, 23, 42, 0.92);
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
 /* quickAddMagic live preview pills (Vikunja port) */
 .quickadd-preview {
   display: flex;

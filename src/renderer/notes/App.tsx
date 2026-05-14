@@ -17,8 +17,7 @@ import { PanicModeModal } from './components/PanicModeModal'
 import { StudioPanel } from './components/StudioPanel'
 import { NotesListView } from './components/NotesListView'
 import { AddCourseModal } from './components/AddCourseModal'
-import { CaptureInbox } from './components/CaptureInbox'
-import { FileDropZone, MaterialFileViewer } from './features/materials'
+import { FileDropZone, MaterialsView, inferMaterialKind } from './features/materials'
 import { selectPanicItems } from './lib/panicMode'
 import type { SearchHit } from './lib/searchIndex'
 import { routePaletteHit } from './lib/paletteRouter'
@@ -32,11 +31,7 @@ import {
 import {
   ShellContainer,
   IconRail,
-  LeftSidebar,
-  SidebarSection as ShellSidebarSection,
-  SidebarRow,
   MainPanel,
-  RightPanel,
   RightPanelCollapsedButton,
 } from './components/WorkspaceShell'
 import { ipc } from '@shared/ipc-client'
@@ -55,14 +50,11 @@ import {
   GraduationCap,
   HelpCircle,
   Image,
-  LayoutDashboard,
   MoreHorizontal,
   Network,
   PanelTop,
   PenLine,
   Play,
-  Search,
-  Settings,
   Sparkles,
   Target,
   Layers,
@@ -448,13 +440,11 @@ export default function App() {
       return (v && (allowed as readonly string[]).includes(v)) ? (v as T) : fallback
     } catch { return fallback }
   }
-  const [leftSidebarOpen, setLeftSidebarOpen] = useState(() => readPersistedBool('studydesk:ui:leftOpen', true))
   const [rightPanelOpen, setRightPanelOpen]   = useState(() => readPersistedBool('studydesk:ui:rightOpen', false))
   const [rightTab, setRightTab]               = useState<'sources' | 'materials' | 'study' | 'health'>(
     () => readPersistedString('studydesk:ui:rightTab', ['sources', 'materials', 'study', 'health'] as const, 'sources')
   )
   // Persist on change.
-  useEffect(() => { try { localStorage.setItem('studydesk:ui:leftOpen', leftSidebarOpen ? '1' : '0') } catch { /* ignore */ } }, [leftSidebarOpen])
   useEffect(() => { try { localStorage.setItem('studydesk:ui:rightOpen', rightPanelOpen ? '1' : '0') } catch { /* ignore */ } }, [rightPanelOpen])
   useEffect(() => { try { localStorage.setItem('studydesk:ui:rightTab', rightTab) } catch { /* ignore */ } }, [rightTab])
 
@@ -1345,149 +1335,17 @@ export default function App() {
 
   return (
     <ShellContainer>
-      {/* IconRail — narrow course avatars column (SurfSense IconRail) */}
       <IconRail
         courses={courses}
         activeCourseId={selectedCourseId}
         onSelectCourse={(id) => {
           setSelectedCourseId(id)
-          if (id) {
-            const firstNote = notes.find(n => n.courseId === id)
-            if (firstNote) setSelected(firstNote)
-          }
+          const firstNote = id ? notes.find(n => n.courseId === id) : undefined
+          if (firstNote) setSelected(firstNote)
+          setActiveTool('today')
         }}
         onAddCourse={() => setShowAddCourseModal(true)}
-        onBackToDashboard={() => setAppView('dashboard')}
       />
-
-      {/* Left Sidebar — sources/notes (SurfSense Sidebar).
-          Audit fix (P0.3): searchSpaceLabel uses the EXPLICIT selection,
-          not currentCourse — currentCourse falls back to most-recent
-          course, which made the header read e.g. "BUAD 6621" even when
-          the user clicked "All courses" on the rail.
-          Audit fix (P2.1): collapse chevron now actually collapses the
-          sidebar (hides the 280px column). Re-open via the small chip
-          rendered in the icon-rail area below. State persists. */}
-      {leftSidebarOpen ? (
-      <LeftSidebar
-        searchSpaceLabel={selectedCourse ? (selectedCourse.code ?? selectedCourse.name) : 'All Courses'}
-        onCollapse={() => setLeftSidebarOpen(false)}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-      >
-        {/* ── Course-specific sidebar: deadlines, reminders, announcements, updates ── */}
-        <ShellSidebarSection title="Upcoming Deadlines" icon={CalendarDays} count={orderedVisibleDeadlines.length} defaultOpen={orderedVisibleDeadlines.length > 0}>
-          {orderedVisibleDeadlines.length > 0 ? orderedVisibleDeadlines.slice(0, 8).map(d => {
-            const daysLeft = Math.ceil((d.deadlineAt - Date.now()) / 86_400_000)
-            const urgency = daysLeft <= 1 ? 'critical' : daysLeft <= 3 ? 'warning' : undefined
-            return (
-              <SidebarRow
-                key={d.id}
-                title={d.title}
-                meta={daysLeft <= 0 ? 'Overdue' : daysLeft === 1 ? 'Due tomorrow' : `${daysLeft} days left`}
-                icon={<CalendarDays size={13} />}
-                badge={urgency === 'critical' ? { label: 'urgent', tone: 'critical' } : urgency === 'warning' ? { label: 'soon', tone: 'warning' } : undefined}
-              />
-            )
-          }) : <div className="px-2 py-2 text-2xs text-white/35 italic">No upcoming deadlines</div>}
-        </ShellSidebarSection>
-
-        <ShellSidebarSection title="Reminders" icon={Bell} count={activeAlerts.length + visibleClassSessions.length} defaultOpen={false}>
-          {activeAlerts.length > 0 ? activeAlerts.slice(0, 6).map(alert => (
-            <SidebarRow
-              key={alert.id}
-              title={alert.title}
-              meta={alert.reason}
-              icon={<Bell size={13} />}
-              badge={alert.priority === 'critical' ? { label: 'critical', tone: 'critical' } : alert.priority === 'high' ? { label: 'high', tone: 'warning' } : undefined}
-            />
-          )) : null}
-          {visibleClassSessions.length > 0 ? visibleClassSessions.slice(0, 4).map(session => (
-            <SidebarRow
-              key={session.id}
-              title={session.title}
-              meta={new Date(session.startedAt).toLocaleDateString()}
-              icon={<Sparkles size={13} />}
-              badge={session.examHints.length > 0 ? { label: 'exam hint', tone: 'warning' } : undefined}
-            />
-          )) : null}
-          {activeAlerts.length === 0 && visibleClassSessions.length === 0 && (
-            <div className="px-2 py-2 text-2xs text-white/35 italic">No reminders</div>
-          )}
-        </ShellSidebarSection>
-
-        <ShellSidebarSection title="Assignments" icon={ClipboardList} count={visibleAssignments.filter(a => a.status !== 'archived' && a.status !== 'submitted').length} defaultOpen={visibleAssignments.filter(a => a.status !== 'archived' && a.status !== 'submitted').length > 0}>
-          {visibleAssignments.filter(a => a.status !== 'archived' && a.status !== 'submitted').length > 0
-            ? visibleAssignments.filter(a => a.status !== 'archived' && a.status !== 'submitted').slice(0, 6).map(a => (
-              <SidebarRow
-                key={a.id}
-                title={a.title}
-                meta={a.dueDate ? `Due ${new Date(a.dueDate).toLocaleDateString()}` : a.status}
-                icon={<ClipboardList size={13} />}
-                badge={a.status === 'in_progress' ? { label: 'active', tone: 'parsed' } : undefined}
-              />
-            ))
-            : <div className="px-2 py-2 text-2xs text-white/35 italic">No active assignments</div>}
-        </ShellSidebarSection>
-
-        {/* ── Capture Inbox: only shown when there are unlinked captures ── */}
-        {unlinkedCaptures.length > 0 && <CaptureInbox
-          captures={unlinkedCaptures.slice(0, 10)}
-          activeNoteId={selected?.id}
-          onLink={async (captureIds, noteId) => {
-            await ipc.invoke('capture:linkToNote', { captureIds, noteId })
-            // Refresh both notes (content changed) and unlinked captures
-            const [updatedNotes, updatedUnlinked] = await Promise.all([
-              ipc.invoke<Note[]>('notes:list'),
-              ipc.invoke<Capture[]>('capture:unlinked', { limit: 100 }),
-            ])
-            setNotes(updatedNotes)
-            setUnlinkedCaptures(updatedUnlinked)
-            setSelected(updatedNotes.find(n => n.id === noteId) ?? selected)
-          }}
-          onCreateNote={async (captureIds) => {
-            // Create a new note from selected captures
-            const captureTexts = captureIds
-              .map(id => unlinkedCaptures.find(c => c.id === id)?.text)
-              .filter(Boolean) as string[]
-            const content = JSON.stringify({
-              type: 'doc',
-              content: captureTexts.map(text => ({
-                type: 'sourceQuote',
-                attrs: { captureId: captureIds[captureTexts.indexOf(text)], source: 'capture' },
-                content: [{ type: 'text', text }],
-              })),
-            })
-            const note = await ipc.invoke<Note>('notes:create', {
-              title: `Captures — ${new Date().toLocaleDateString()}`,
-              content,
-            })
-            // Link the captures to the new note
-            await ipc.invoke('capture:linkToNote', { captureIds, noteId: note.id })
-            const [updatedNotes, updatedUnlinked] = await Promise.all([
-              ipc.invoke<Note[]>('notes:list'),
-              ipc.invoke<Capture[]>('capture:unlinked', { limit: 100 }),
-            ])
-            setNotes(updatedNotes)
-            setUnlinkedCaptures(updatedUnlinked)
-            setSelected(updatedNotes.find(n => n.id === note.id) ?? null)
-            setActiveTool('today')
-          }}
-        />}
-      </LeftSidebar>
-      ) : (
-        // Collapsed-state pill — small "Show sidebar" affordance so users
-        // can re-open after collapsing. Mirrors the right-panel collapse
-        // pattern.
-        <button
-          onClick={() => setLeftSidebarOpen(true)}
-          className="hidden md:flex w-7 mr-2 items-start justify-center pt-2 text-white/40 hover:text-white/85 hover:bg-white/[0.04] rounded-md transition-colors"
-          title="Show sidebar"
-          aria-label="Show sidebar"
-        >
-          <ChevronRight size={14} />
-        </button>
-      )}
 
       {/* Main Panel — tabs + WorkspaceSurface (SurfSense MainContentPanel) */}
       <MainPanel
@@ -1581,6 +1439,11 @@ export default function App() {
           onAddToRiver={addToRiver}
           onRemoveFromRiver={removeFromRiver}
           onNavigate={setActiveTool}
+          onSelectCourse={(id) => {
+            setSelectedCourseId(id)
+            const firstNote = id ? notes.find(n => n.courseId === id) : undefined
+            if (firstNote) setSelected(firstNote)
+          }}
           onOpenPanic={() => setPanicOpen(true)}
           focusedMaterialNoteId={focusedMaterialNoteId}
           onOpenStudyItemSource={openStudyItemSource}
@@ -1743,6 +1606,7 @@ function WorkspaceSurface({
   onAddToRiver,
   onRemoveFromRiver,
   onNavigate,
+  onSelectCourse,
   onOpenPanic,
   focusedMaterialNoteId,
   onOpenStudyItemSource,
@@ -1785,6 +1649,7 @@ function WorkspaceSurface({
   /** Tab navigation, threaded down so widgets like the dashboard's
    *  "Review day" button can switch tabs without lifting state. */
   onNavigate: (tool: WorkspaceTool) => void
+  onSelectCourse: (courseId: string | null) => void
   /** Opens the T3 panic-mode modal scoped to current course. */
   onOpenPanic: () => void
   focusedMaterialNoteId: string | null
@@ -1793,7 +1658,20 @@ function WorkspaceSurface({
 }) {
   switch (activeTool) {
     case 'dashboard':
-      return <DashboardView courses={courses} deadlines={deadlines} studyItems={studyItems} alerts={alerts} onCompleteDeadline={onCompleteDeadline} onResolveAlert={onResolveAlert} onNavigate={onNavigate} />
+      return (
+        <DashboardView
+          courses={courses}
+          deadlines={deadlines}
+          assignments={assignments}
+          captures={captures}
+          studyItems={studyItems}
+          alerts={alerts}
+          currentCourse={currentCourse}
+          onCompleteDeadline={onCompleteDeadline}
+          onResolveAlert={onResolveAlert}
+          onNavigate={onNavigate}
+        />
+      )
     case 'notes':
       return <NotesListView notes={notes} currentCourse={currentCourse} onSelect={(n) => { onSelect(n); onNavigate('today') }} onCreate={onCreate} />
     case 'daily':
@@ -1814,7 +1692,22 @@ function WorkspaceSurface({
       // Ticket 1.1: materials gets its own tab now. The right-rail
       // Materials slot still exists for course-context-while-editing,
       // but the canonical surface is here.
-      return <MaterialsView selectedCourse={currentCourse} notes={notes} studyItems={studyItems} focusedMaterialNoteId={focusedMaterialNoteId} onCreateFromFile={onCreateFromFile} onSelectNote={onSelect} onRefresh={onRefresh} onStatus={onStatus} />
+      return (
+        <MaterialsView
+          selectedCourse={currentCourse}
+          notes={notes}
+          studyItems={studyItems}
+          focusedMaterialNoteId={focusedMaterialNoteId}
+          onCreateFromFile={onCreateFromFile}
+          onSelectNote={onSelect}
+          onRefresh={onRefresh}
+          onStatus={onStatus}
+          countMaterialUsages={countMaterialUsages}
+          extractQuestionDraftsFromText={extractQuestionDraftsFromText}
+          makeQuestionCandidateKey={makeQuestionCandidateKey}
+          noteText={noteText}
+        />
+      )
     case 'assignment':
       return <AssignmentParserView selected={selected} selectedText={selectedText} courseId={currentCourse?.id} deadlines={deadlines} onSave={onAssignmentSave} />
     case 'syllabus':
@@ -1827,7 +1720,20 @@ function WorkspaceSurface({
       return <TimelineView notes={notes} deadlines={deadlines} captures={captures} studyItems={studyItems} courses={courses} courseId={currentCourse?.id} onSelectNote={onSelect} />
     case 'today':
     default:
-      return <DocumentWorkspace selected={selected} selectedText={selectedText} captures={captures} notes={notes} courses={courses} studyItems={studyItems} riverIds={riverIds} currentCourse={currentCourse} linkedAssignment={linkedAssignment} onUpdate={onUpdate} onDelete={onDelete} onCreate={onCreate} onCreateFromFile={onCreateFromFile} onRefresh={onRefresh} onSelect={onSelect} onAddToRiver={onAddToRiver} onRemoveFromRiver={onRemoveFromRiver} onStatus={onStatus} />
+      return (
+        <DashboardView
+          courses={courses}
+          deadlines={deadlines}
+          assignments={assignments}
+          captures={captures}
+          studyItems={studyItems}
+          alerts={alerts}
+          currentCourse={currentCourse}
+          onCompleteDeadline={onCompleteDeadline}
+          onResolveAlert={onResolveAlert}
+          onNavigate={onNavigate}
+        />
+      )
   }
 }
 
@@ -2580,350 +2486,6 @@ function isDueSoon(value?: number) {
   return delta < 3 * 86_400_000
 }
 
-type MaterialKind = 'reading' | 'case' | 'assignment_prompt' | 'slide' | 'study_guide' | 'syllabus'
-
-const materialKindOptions: Array<{ kind: MaterialKind; label: string }> = [
-  { kind: 'reading', label: 'Readings' },
-  { kind: 'case', label: 'Cases' },
-  { kind: 'assignment_prompt', label: 'Assignment prompts' },
-  { kind: 'slide', label: 'Slides' },
-  { kind: 'study_guide', label: 'Study guides' },
-  { kind: 'syllabus', label: 'Syllabus' },
-]
-
-function inferMaterialKind(name: string, documentType?: Note['documentType']): { kind: MaterialKind; label: string } {
-  const value = name.toLowerCase()
-  const kind: MaterialKind =
-    documentType === 'syllabus' ? 'syllabus'
-    : documentType === 'assignment_prompt' ? 'assignment_prompt'
-    : /\.(pptx?|key)$/i.test(value) || /\b(slides?|lecture deck|powerpoint|presentation)\b/i.test(value) ? 'slide'
-    : /\b(case|harvard|coffee chain)\b/i.test(value) ? 'case'
-    : /\b(assignment|homework|prompt|project report|deliverable)\b/i.test(value) ? 'assignment_prompt'
-    : /\b(study guide|review guide|exam review|practice exam)\b/i.test(value) ? 'study_guide'
-    : 'reading'
-  return materialKindOptions.find(option => option.kind === kind) ?? materialKindOptions[0]
-}
-
-// ── Materials tab ─────────────────────────────────────────────────────────
-// Full-width version of the materials right-rail panel. Same data, more
-// breathing room: imported file list, usage backref counts, publish-site
-// action. When no course is selected we tell the user to pick one
-// (folder watcher is per-course).
-function MaterialsView({
-  selectedCourse, notes, studyItems, focusedMaterialNoteId, onCreateFromFile, onSelectNote, onRefresh, onStatus,
-}: {
-  selectedCourse?: Course
-  notes: Note[]
-  studyItems: StudyItem[]
-  focusedMaterialNoteId: string | null
-  onCreateFromFile: (input: { title: string; content: string; docJson?: unknown; courseId?: string; documentType?: Note['documentType'] }) => Promise<string>
-  onSelectNote: (n: Note) => void
-  onRefresh: () => void
-  onStatus: (msg: string) => void
-}) {
-  const [pickingFolder, setPickingFolder] = useState(false)
-  const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null)
-  const [materialFilter, setMaterialFilter] = useState<MaterialKind | 'all'>('all')
-  const [showFlashcardReview, setShowFlashcardReview] = useState(false)
-  const [flashcardCandidates, setFlashcardCandidates] = useState<ReadonlyArray<import('./lib/extractCards').CardCandidate>>([])
-  const [flashcardSourceNote, setFlashcardSourceNote] = useState<Note | null>(null)
-  const [showQuestionReview, setShowQuestionReview] = useState(false)
-  const [questionCandidates, setQuestionCandidates] = useState<ReadonlyArray<{ cardKey: string; front: string; back?: string; position: number; source: 'question' }>>([])
-  const [questionSourceNote, setQuestionSourceNote] = useState<Note | null>(null)
-  useEffect(() => {
-    if (focusedMaterialNoteId) setSelectedMaterialId(focusedMaterialNoteId)
-  }, [focusedMaterialNoteId])
-  if (!selectedCourse) {
-    return (
-      <section className="phase3-card">
-        <header className="phase3-header">
-          <div>
-            <p className="phase3-eyebrow">Materials</p>
-            <h1>Pick a course</h1>
-            <span>Materials are organized per-course. Select one in the rail to manage its folder and imports.</span>
-          </div>
-        </header>
-      </section>
-    )
-  }
-  const imported = (selectedCourse.materialsImportedFiles ?? []).filter(r => r.noteId)
-  const importedNoteIds = new Set(imported.map(r => r.noteId).filter(Boolean))
-  const importedByNoteId = new Map(imported.map(r => [r.noteId, r]))
-  const directUploadImports = imported.filter(r => r.sourceKind === 'direct_upload').length
-  const watchedFolderImports = imported.filter(r => r.sourceKind !== 'direct_upload').length
-  const materialNotes = notes
-    .filter(n =>
-      n.courseId === selectedCourse.id &&
-      (n.documentType === 'reading' || n.documentType === 'assignment_prompt' || n.documentType === 'syllabus')
-    )
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-  const manualMaterials = materialNotes.filter(n => !importedNoteIds.has(n.id))
-  const materialCards = materialNotes.map(note => {
-    const record = importedByNoteId.get(note.id)
-    const sourcePath = record?.storedPath ?? record?.path
-    const label = record?.originalFilename ?? sourcePath?.split('/').pop() ?? note.title
-    const usage = sourcePath ? countMaterialUsages(notes, sourcePath) : 0
-    const kind = inferMaterialKind(label, note.documentType)
-    const sourceLabel = record?.sourceKind === 'direct_upload'
-      ? 'Direct upload'
-      : record
-        ? 'Watched folder'
-        : 'Extracted text'
-    return { note, record, sourcePath, sourceLabel, label, usage, kind }
-  })
-  const visibleMaterials = materialFilter === 'all'
-    ? materialCards
-    : materialCards.filter(item => item.kind.kind === materialFilter)
-  const selectedMaterial = materialCards.find(item => item.note.id === selectedMaterialId)
-    ?? visibleMaterials[0]
-    ?? materialCards[0]
-  const materialCounts = materialKindOptions.map(option => ({
-    ...option,
-    count: materialCards.filter(item => item.kind.kind === option.kind).length,
-  }))
-  const uploadRegionId = `materials-upload-${selectedCourse.id}`
-  async function openMaterialFlashcards(note: Note) {
-    const { extractCardCandidates } = await import('./lib/extractCards')
-    const candidates = extractCardCandidates(note.content)
-    setFlashcardSourceNote(note)
-    setFlashcardCandidates(candidates)
-    setShowFlashcardReview(true)
-  }
-
-  function openMaterialQuiz(note: Note) {
-    const questions = extractQuestionDraftsFromText(noteText(note.content))
-    const candidates = questions.map((draft, index) => ({
-      cardKey: makeQuestionCandidateKey(draft.question, index + 1),
-      front: draft.question,
-      back: draft.answer,
-      position: index + 1,
-      source: 'question' as const,
-    }))
-    setQuestionSourceNote(note)
-    setQuestionCandidates(candidates)
-    setShowQuestionReview(true)
-  }
-
-  const uploadDropZone = (
-    <div id={uploadRegionId}>
-      <FileDropZone
-        courseId={selectedCourse.id}
-        documentType="reading"
-        onCreate={onCreateFromFile}
-        onCreated={(noteId) => {
-          setSelectedMaterialId(noteId)
-          onRefresh()
-          onStatus('Material added to this course.')
-        }}
-        onWarning={onStatus}
-      />
-    </div>
-  )
-  return (
-    <section className="phase3-card materials-library-view">
-      <header className="phase3-header materials-page-header">
-        <div>
-          <p className="phase3-eyebrow">Materials</p>
-          <h1>{selectedCourse.code ?? selectedCourse.name}</h1>
-          <span>
-            {materialNotes.length === 0
-              ? 'No course materials yet — upload a file or pick a watched folder.'
-              : `${materialNotes.length} source material${materialNotes.length === 1 ? '' : 's'} available for study tools.`}
-          </span>
-        </div>
-        <div className="phase3-actions materials-header-actions">
-          <button
-            className="outline-button"
-            onClick={() => {
-              const uploadLabel = document.getElementById(uploadRegionId)?.querySelector('label')
-              if (uploadLabel instanceof HTMLElement) uploadLabel.click()
-            }}
-          ><Upload size={15} /> Upload files</button>
-          <button
-            className="outline-button"
-            disabled={pickingFolder}
-            onClick={async () => {
-              setPickingFolder(true)
-              try {
-                await ipc.invoke('course:pickMaterialsFolder', { courseId: selectedCourse.id })
-                onRefresh()
-                onStatus('Materials folder linked.')
-              } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err)
-                onStatus(`Could not link folder: ${msg}`)
-              } finally {
-                setPickingFolder(false)
-              }
-            }}
-          >{pickingFolder ? <Spinner size={15} /> : <Folder size={15} />} Pick folder</button>
-        </div>
-      </header>
-      <div className="materials-workspace-body">
-        {materialNotes.length === 0 ? (
-          <div className="materials-empty-state">
-            {uploadDropZone}
-            <p>Upload readings, cases, assignment prompts, slides, study guides, and supporting files. They stay local and become course source material for flashcards and quizzes.</p>
-          </div>
-        ) : (
-          <div className="materials-library-grid">
-            <section className="materials-library-panel">
-              <div className="materials-library-toolbar">
-                <div>
-                  <div className="materials-library-eyebrow">Course library</div>
-                  <span>{materialCards.length} source material{materialCards.length === 1 ? '' : 's'}</span>
-                </div>
-                <button
-                  className="materials-library-edit"
-                  disabled={!selectedMaterial}
-                  onClick={() => selectedMaterial && onSelectNote(selectedMaterial.note)}
-                >
-                  Edit note
-                </button>
-              </div>
-              <div className="materials-hidden-upload" aria-hidden="true">
-                {uploadDropZone}
-              </div>
-              <div className="materials-library-filters" role="tablist" aria-label="Material type filter">
-                <button
-                  className={cn(materialFilter === 'all' && 'active')}
-                  onClick={() => setMaterialFilter('all')}
-                  role="tab"
-                  aria-selected={materialFilter === 'all'}
-                >
-                  All <span>{materialCards.length}</span>
-                </button>
-                {materialCounts.map(option => (
-                  <button
-                    key={option.kind}
-                    className={cn(materialFilter === option.kind && 'active')}
-                    onClick={() => setMaterialFilter(option.kind)}
-                    role="tab"
-                    aria-selected={materialFilter === option.kind}
-                  >
-                    {option.label} <span>{option.count}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="materials-library-list">
-                {visibleMaterials.length === 0 ? (
-                  <CourseCalendarEmpty text={`No ${materialKindOptions.find(option => option.kind === materialFilter)?.label.toLowerCase() ?? 'materials'} attached yet.`} />
-                ) : visibleMaterials.map(item => (
-                  <button
-                    key={item.note.id}
-                    onClick={() => setSelectedMaterialId(item.note.id)}
-                    className={cn('materials-library-item', selectedMaterial?.note.id === item.note.id && 'active')}
-                    title={item.sourceLabel}
-                  >
-                    <FileText size={13} />
-                    <span>
-                      <strong>{item.label}</strong>
-                      <em>
-                        {item.kind.label}
-                        {' · '}
-                        {item.sourceLabel}
-                        {' · '}
-                        Updated {new Date(item.note.updatedAt).toLocaleDateString()}
-                      </em>
-                    </span>
-                    {item.usage > 0 && <small>{item.usage}× cited</small>}
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            <section className="materials-reader-panel">
-              {selectedMaterial ? (
-                <MaterialFileViewer
-                  note={selectedMaterial.note}
-                  course={selectedCourse}
-                  filename={selectedMaterial.label}
-                  materialType={selectedMaterial.kind.label}
-                  sourcePath={selectedMaterial.sourcePath}
-                  sourceLabel={selectedMaterial.sourceLabel}
-                  onCaptureCreated={() => {
-                    onRefresh()
-                    onStatus('Highlight saved as a source-linked capture.')
-                  }}
-                  onExtractFlashcards={() => void openMaterialFlashcards(selectedMaterial.note)}
-                  onExtractQuiz={() => openMaterialQuiz(selectedMaterial.note)}
-                />
-              ) : (
-                <CourseCalendarEmpty text="Select a material to read it here." />
-              )}
-            </section>
-          </div>
-        )}
-
-        {(manualMaterials.length > 0 || directUploadImports > 0) && watchedFolderImports > 0 && (
-          <div className="materials-library-footnote">
-            {manualMaterials.length + directUploadImports} direct upload{manualMaterials.length + directUploadImports === 1 ? '' : 's'} and {watchedFolderImports} watched-folder import{watchedFolderImports === 1 ? '' : 's'} are grouped together as course materials.
-          </div>
-        )}
-      </div>
-      <QuizMeBackModal
-        open={showFlashcardReview}
-        onClose={() => setShowFlashcardReview(false)}
-        candidates={flashcardCandidates}
-        existingFronts={studyItems.map(s => s.front ?? '')}
-        onCommit={async (kept) => {
-          const sourceNote = flashcardSourceNote
-          if (!sourceNote) return
-          let created = 0
-          try {
-            for (const candidate of kept) {
-              await ipc.invoke('study:create', {
-                courseId: sourceNote.courseId ?? selectedCourse.id,
-                sourceNoteId: sourceNote.id,
-                sourceCardKey: candidate.cardKey,
-                type: 'flashcard',
-                front: candidate.front,
-                back: candidate.back,
-              })
-              created++
-            }
-            onStatus(`${created} source-linked card${created === 1 ? '' : 's'} added from "${sourceNote.title || 'material'}".`)
-            onRefresh()
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err)
-            onStatus(`Saved ${created}/${kept.length} card${created === 1 ? '' : 's'} before failing: ${msg}`)
-          }
-        }}
-      />
-      <QuizMeBackModal
-        open={showQuestionReview}
-        onClose={() => setShowQuestionReview(false)}
-        candidates={questionCandidates}
-        existingFronts={studyItems.filter(s => s.type === 'question').map(s => s.front ?? '')}
-        mode="questions"
-        onCommit={async (kept) => {
-          const sourceNote = questionSourceNote
-          if (!sourceNote) return
-          let created = 0
-          try {
-            for (const candidate of kept) {
-              await ipc.invoke('study:create', {
-                courseId: sourceNote.courseId ?? selectedCourse.id,
-                sourceNoteId: sourceNote.id,
-                sourceCardKey: candidate.cardKey,
-                type: 'question',
-                front: candidate.front,
-                back: candidate.back,
-              })
-              created++
-            }
-            const skipped = Math.max(0, questionCandidates.length - created)
-            onStatus(`${created} source-linked question${created === 1 ? '' : 's'} added from "${sourceNote.title || 'material'}"${skipped > 0 ? ` (${skipped} skipped)` : ''}.`)
-            onRefresh()
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err)
-            onStatus(`Saved ${created}/${kept.length} question${created === 1 ? '' : 's'} before failing: ${msg}`)
-          }
-        }}
-      />
-    </section>
-  )
-}
-
 function DocumentWorkspace({
   selected,
   selectedText,
@@ -3628,79 +3190,188 @@ function ReviewChecklistSection({ title, items }: { title: string; items: Checkl
 function DashboardView({
   courses,
   deadlines,
+  assignments,
+  captures,
   studyItems,
   alerts,
+  currentCourse,
   onCompleteDeadline,
   onResolveAlert,
   onNavigate,
 }: {
   courses: Course[]
   deadlines: AcademicDeadline[]
+  assignments: Assignment[]
+  captures: Capture[]
   studyItems: StudyItem[]
   alerts: Pick<AttentionAlert, 'id' | 'title' | 'reason' | 'priority'>[]
+  currentCourse?: Course
   onCompleteDeadline: (id: string) => Promise<void>
   onResolveAlert: (id: string) => Promise<void>
   /** Switch to a sibling workspace tab. Used by the "Review day" CTA. */
   onNavigate: (tool: WorkspaceTool) => void
 }) {
-  const dueSoon = deadlines.filter(deadline => !deadline.completed).slice(0, 3)
-  // Count items genuinely due now: anything past or due today.
-  const today = new Date(); today.setHours(23, 59, 59, 999)
-  const dueNow = studyItems.filter(s =>
-    !s.nextReviewAt || s.nextReviewAt <= today.getTime()
-  ).length
+  const now = Date.now()
+  const endOfToday = new Date()
+  endOfToday.setHours(23, 59, 59, 999)
+  const endOfWeek = now + 7 * 86_400_000
+  const openDeadlines = deadlines
+    .filter(deadline => !deadline.completed)
+    .sort((a, b) => a.deadlineAt - b.deadlineAt)
+  const activeAssignments = assignments
+    .filter(a => a.status !== 'archived' && a.status !== 'submitted')
+    .sort((a, b) => (a.dueDate ?? Number.MAX_SAFE_INTEGER) - (b.dueDate ?? Number.MAX_SAFE_INTEGER))
+  const dueStudyItems = studyItems
+    .filter(item => !item.nextReviewAt || item.nextReviewAt <= endOfToday.getTime())
+    .sort((a, b) => (a.nextReviewAt ?? 0) - (b.nextReviewAt ?? 0))
+  const todayDeadlines = openDeadlines.filter(deadline => deadline.deadlineAt <= endOfToday.getTime())
+  const upcomingDeadlines = openDeadlines.filter(deadline => deadline.deadlineAt > endOfToday.getTime() && deadline.deadlineAt <= endOfWeek)
+  const visibleAlerts = alerts.slice(0, 4)
+  const recentCaptures = captures.slice(0, 4)
+  const primaryAction = todayDeadlines[0]?.title
+    ?? activeAssignments[0]?.title
+    ?? dueStudyItems[0]?.front
+    ?? visibleAlerts[0]?.title
+    ?? 'Pick one study action'
+
+  const workQueue = [
+    ...todayDeadlines.slice(0, 3).map(deadline => ({
+      id: `deadline-${deadline.id}`,
+      eyebrow: deadline.deadlineAt < now ? 'Overdue deadline' : 'Due today',
+      title: deadline.title,
+      meta: formatDue(deadline.deadlineAt),
+      action: 'Complete',
+      onAction: () => void onCompleteDeadline(deadline.id),
+      tone: deadline.deadlineAt < now ? 'critical' : 'warning',
+    })),
+    ...activeAssignments.slice(0, 3).map(assignment => ({
+      id: `assignment-${assignment.id}`,
+      eyebrow: 'Assignment',
+      title: assignment.title,
+      meta: assignment.dueDate ? `Due ${formatDue(assignment.dueDate)}` : assignment.status.replace(/_/g, ' '),
+      action: 'Open deadlines',
+      onAction: () => onNavigate('deadlines'),
+      tone: 'neutral',
+    })),
+    ...dueStudyItems.slice(0, 3).map(item => ({
+      id: `study-${item.id}`,
+      eyebrow: item.type === 'question' ? 'Quiz review' : 'Flashcard review',
+      title: item.front,
+      meta: item.reviewCount > 0 ? `${item.reviewCount} review${item.reviewCount === 1 ? '' : 's'}` : 'New item',
+      action: item.type === 'question' ? 'Quiz' : 'Flashcards',
+      onAction: () => onNavigate(item.type === 'question' ? 'quiz' : 'flashcards'),
+      tone: 'study',
+    })),
+    ...visibleAlerts.slice(0, 2).map(alert => ({
+      id: `alert-${alert.id}`,
+      eyebrow: `${alert.priority} reminder`,
+      title: alert.title,
+      meta: alert.reason,
+      action: 'Resolve',
+      onAction: () => void onResolveAlert(alert.id),
+      tone: alert.priority === 'critical' ? 'critical' : 'neutral',
+    })),
+  ].slice(0, 7)
+
   return (
-    <section className="phase3-card dashboard-view">
-      <header className="phase3-header">
+    <section className="phase3-card dashboard-view today-dashboard">
+      <header className="phase3-header today-dashboard-header">
         <div>
-          <p className="phase3-eyebrow">Academic dashboard</p>
-          <h1>Today’s operating picture</h1>
-          <span>Courses, deadlines, study queue, and local alerts stay in one glass workspace.</span>
+          <p className="phase3-eyebrow">Today</p>
+          <h1>{currentCourse ? currentCourse.code ?? currentCourse.name : 'What to work on now'}</h1>
+          <span>{currentCourse ? primaryAction : 'Pick a course from the left rail to see today’s work.'}</span>
         </div>
-        <button
-          className="share-button"
-          onClick={() => onNavigate('flashcards')}
-          title={dueNow > 0 ? `${dueNow} card${dueNow === 1 ? '' : 's'} due — opens Flashcards` : 'Open Flashcards review'}
-        >
-          <BarChart3 size={15} /> Review day{dueNow > 0 ? ` (${dueNow})` : ''}
-        </button>
+        <div className="today-header-actions" aria-label="Today actions">
+          <button className="outline-button" onClick={() => onNavigate('deadlines')}><Clock3 size={14} /> Deadlines</button>
+          <button className="review-button" onClick={() => onNavigate(dueStudyItems.some(item => item.type === 'question') ? 'quiz' : 'flashcards')}>
+            <Layers size={14} /> Study {dueStudyItems.length > 0 ? `(${dueStudyItems.length})` : ''}
+          </button>
+        </div>
       </header>
-      <div className="metric-grid">
-        <MetricCard label="Courses" value={courses.length} detail="Active this term" icon={<BookOpen size={20} />} />
-        <MetricCard label="Deadlines" value={deadlines.length} detail="Tracked locally" icon={<CalendarDays size={20} />} />
-        <MetricCard label="Study items" value={studyItems.length} detail="Ready to review" icon={<ClipboardList size={20} />} />
-        <MetricCard label="Alerts" value={alerts.length} detail="Need attention" icon={<Bell size={20} />} />
+
+      <div className="today-summary-grid">
+        <MetricCard label="Due today" value={todayDeadlines.length} detail={upcomingDeadlines.length > 0 ? `${upcomingDeadlines.length} next 7 days` : 'No near deadline'} icon={<CalendarDays size={20} />} />
+        <MetricCard label="Study due" value={dueStudyItems.length} detail={`${studyItems.length} total study items`} icon={<Layers size={20} />} />
+        <MetricCard label="Reminders" value={alerts.length} detail="Notifications and alerts" icon={<Bell size={20} />} />
+        <MetricCard label="Captures" value={captures.length} detail="Inbox moved here" icon={<ClipboardList size={20} />} />
       </div>
-      <div className="dashboard-grid">
-        <section className="phase3-panel wide">
-          <h2>Deadline timeline</h2>
-          {dueSoon.map((deadline, index) => (
-            <div className="timeline-row" key={deadline.id}>
-              <span>{index + 1}</span>
-              <div>
-                <strong>{deadline.title}</strong>
-                <em>{formatDue(deadline.deadlineAt)}</em>
-              </div>
-              <button className="inline-action" onClick={() => onCompleteDeadline(deadline.id)}>{index === 0 ? 'Complete' : 'Done'}</button>
+
+      <div className="today-dashboard-grid">
+        <section className="today-panel today-focus-panel">
+          <div className="today-panel-heading">
+            <div>
+              <p className="phase3-eyebrow">Do next</p>
+              <h2>Priority queue</h2>
             </div>
-          ))}
+            <button className="outline-button" onClick={() => onNavigate('calendar')}>Calendar</button>
+          </div>
+          {workQueue.length > 0 ? (
+            <div className="today-work-list">
+              {workQueue.map(item => (
+                <article key={item.id} className={cn('today-work-item', `tone-${item.tone}`)}>
+                  <div>
+                    <span>{item.eyebrow}</span>
+                    <strong>{item.title}</strong>
+                    <em>{item.meta}</em>
+                  </div>
+                  <button onClick={item.onAction}>{item.action}</button>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyHint message="Nothing urgent today" hint="Use this space for the next deadline, reminder, capture, or study item." />
+          )}
         </section>
-        <section className="phase3-panel">
-          <h2>Attention queue</h2>
-          {alerts.slice(0, 2).map(alert => (
-            <div className="compact-row action-row" key={alert.id}>
+
+        <section className="today-panel">
+          <div className="today-panel-heading">
+            <div>
+              <p className="phase3-eyebrow">Course</p>
+              <h2>Context</h2>
+            </div>
+          </div>
+          {currentCourse ? (
+            <div className="today-course-context">
+              <strong>{currentCourse.code ?? currentCourse.name}</strong>
+              <span>{currentCourse.name}</span>
+              {currentCourse.professorName && <em>{currentCourse.professorName}</em>}
+              {currentCourse.location && <em>{currentCourse.location}</em>}
+            </div>
+          ) : (
+            <EmptyHint message="No course selected" hint="Use the course rail on the left to switch context." />
+          )}
+        </section>
+
+        <section className="today-panel">
+          <div className="today-panel-heading">
+            <div>
+              <p className="phase3-eyebrow">Reminders</p>
+              <h2>Notifications</h2>
+            </div>
+          </div>
+          {visibleAlerts.length > 0 ? visibleAlerts.map(alert => (
+            <div className="compact-row action-row today-compact-row" key={alert.id}>
               <Bell size={18} />
-              <div><strong>{alert.title}</strong><em>{alert.priority} priority</em></div>
+              <div><strong>{alert.title}</strong><em>{alert.reason}</em></div>
               <button onClick={() => onResolveAlert(alert.id)}>Resolve</button>
             </div>
-          ))}
-          <h2 className="section-spacer">Course load</h2>
-          {courses.slice(0, 4).map(course => (
-            <div className="compact-row" key={course.id}>
-              <span className="section-icon course-token">{course.code?.slice(0, 2) ?? 'CR'}</span>
-              <div><strong>{course.code ?? course.name}</strong><em>{course.name}</em></div>
+          )) : <EmptyHint message="No reminders" hint="Alerts and notifications will show here instead of the old left column." />}
+        </section>
+
+        <section className="today-panel">
+          <div className="today-panel-heading">
+            <div>
+              <p className="phase3-eyebrow">Capture inbox</p>
+              <h2>Recent captures</h2>
             </div>
-          ))}
+            <button className="outline-button" onClick={() => onNavigate('notes')}>Notes</button>
+          </div>
+          {recentCaptures.length > 0 ? recentCaptures.map(capture => (
+            <article key={capture.id} className="today-capture-card">
+              <p>{capture.text}</p>
+              <span>{capture.sourceApp ?? capture.source} · {new Date(capture.createdAt).toLocaleDateString()}</span>
+            </article>
+          )) : <EmptyHint message="No captures yet" hint="Start capture from the notch, then triage clips here." />}
         </section>
       </div>
     </section>
@@ -4172,8 +3843,8 @@ function FlashcardsView({
       <header className="phase3-header">
         <div>
           <p className="phase3-eyebrow">Flashcards</p>
-          <h1>Generate and review</h1>
-          <span>{selectedText ? 'Extract flashcard candidates from the selected document.' : 'Select a document to generate flashcards.'}</span>
+          <h1>Active recall</h1>
+          <span>{selectedText ? 'Review saved cards or generate candidates from the selected source.' : 'Review saved cards or select a source to generate more.'}</span>
         </div>
         <div className="flashcards-header-actions">
           {/* T4 anti-shame: Forgive backlog. Only renders when there
@@ -4225,7 +3896,7 @@ function FlashcardsView({
             </button>
           )}
           {drafts.length === 0
-            ? <button className="review-button" onClick={generate} disabled={!selectedText}><ClipboardList size={15} /> Extract from document</button>
+            ? <button className="review-button" onClick={generate} disabled={!selectedText}><ClipboardList size={15} /> Extract from source</button>
             : <button className="review-button" onClick={handleSave}><ClipboardList size={15} /> Save flashcards ({drafts.length})</button>
           }
         </div>

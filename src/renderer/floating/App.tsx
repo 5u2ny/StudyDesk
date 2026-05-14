@@ -111,6 +111,7 @@ export default function App() {
   // Quick-typed capture (port from shpetimhaxhiu/simple-electron-notes-app):
   // frictionless typed input in the notch popover, no need to select text first.
   const [quickCaptureText, setQuickCaptureText] = useState('')
+  const [captureAutoEnabled, setCaptureAutoEnabled] = useState(false)
   const [captureFlash, setCaptureFlash] = useState(false)
   const [hoverDock, setHoverDock] = useState(false)
   const activeTrigger = useRef<FeatureId | null>(null)
@@ -136,7 +137,7 @@ export default function App() {
   }, [notchHeight])
 
   const refreshAcademic = useCallback(async () => {
-    const [todayData, courseData, deadlineData, captureData, studyData, confusionData, alertData, noteData] = await Promise.all([
+    const [todayData, courseData, deadlineData, captureData, studyData, confusionData, alertData, noteData, autoCaptureStatus] = await Promise.all([
       ipc.invoke<TodaySummary>('today:get'),
       ipc.invoke<Course[]>('course:list', {}),
       ipc.invoke<AcademicDeadline[]>('deadline:list', {}),
@@ -145,6 +146,7 @@ export default function App() {
       ipc.invoke<ConfusionItem[]>('confusion:list', {}),
       ipc.invoke<AttentionAlert[]>('attentionAlerts:list', {}),
       ipc.invoke<Note[]>('notes:list'),
+      ipc.invoke<{ enabled: boolean }>('capture:autoStatus').catch(() => ({ enabled: false })),
     ])
     setToday(todayData)
     setCourses(courseData)
@@ -154,6 +156,7 @@ export default function App() {
     setConfusions(confusionData)
     setAttentionAlerts(alertData)
     setNotes(noteData)
+    setCaptureAutoEnabled(Boolean(autoCaptureStatus?.enabled))
   }, [])
 
   useEffect(() => {
@@ -316,6 +319,12 @@ export default function App() {
     // The IPC handler also broadcasts capture:new which our existing
     // listener picks up to refresh the captures list — no manual refresh needed.
   }, [quickCaptureText])
+
+  const toggleAutoCapture = useCallback(async () => {
+    const channel = captureAutoEnabled ? 'capture:stopAuto' : 'capture:startAuto'
+    const result = await ipc.invoke<{ enabled: boolean }>(channel)
+    setCaptureAutoEnabled(Boolean(result?.enabled))
+  }, [captureAutoEnabled])
 
   const captureToStudy = useCallback(async (capture: Capture, type: StudyItem['type']) => {
     await ipc.invoke('study:create', { front: capture.text, type, sourceCaptureId: capture.id, courseId: capture.courseId })
@@ -557,6 +566,15 @@ export default function App() {
       case 'capture':
         return (
           <PopoverPanel title="Capture" subtitle="Turn highlights into study material">
+            <section className="student-action-strip capture-watch-strip">
+              <div>
+                <p className="student-eyebrow">Selection capture</p>
+                <h3>{captureAutoEnabled ? 'Watching selected text' : 'Paused until you start it'}</h3>
+              </div>
+              <Button variant={captureAutoEnabled ? 'ghost' : 'phase'} onClick={toggleAutoCapture}>
+                {captureAutoEnabled ? 'Stop capture' : 'Start capture'}
+              </Button>
+            </section>
             {/* Typed quick-capture (port from simple-electron-notes-app): no need to
                 select text first — drop a thought directly. Cmd/Ctrl+Enter saves. */}
             <section className="student-action-strip slim">

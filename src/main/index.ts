@@ -137,7 +137,8 @@ app.whenReady().then(async () => {
     console.log(`[main] Accessibility permission granted: ${granted}`);
   }
 
-  // Capture shortcut + auto-poll (registered by captureService)
+  // Capture shortcuts. Auto-watch is opt-in from the notch so opening the
+  // app never starts mouse-up capture by itself.
   captureService.start(settings.captureShortcut, (capture) => {
     windowManager.sendToFloating('capture:new', capture);
     // Also forward to notes window if it's open

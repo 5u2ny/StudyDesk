@@ -42,18 +42,21 @@ interface IconRailProps {
 export function IconRail({ courses, activeCourseId, onSelectCourse, onAddCourse, onOpenSettings, onBackToDashboard }: IconRailProps) {
   return (
     <div className="hidden md:flex w-[60px] shrink-0 flex-col items-center gap-2 py-2">
-      {/* Back to dashboard */}
-      <button
-        onClick={() => onBackToDashboard?.()}
-        className={cn(
-          'group relative w-10 h-10 rounded-xl flex items-center justify-center transition-all',
-          'border border-white/[0.06] bg-white/[0.04] hover:bg-white/[0.08] hover:border-white/[0.12]',
-        )}
-        title="Back to dashboard"
-      >
-        <LayoutDashboard size={16} className="text-white/70 group-hover:text-white" />
-      </button>
-      <div className="h-px w-6 bg-white/[0.08]" />
+      {onBackToDashboard && (
+        <>
+          <button
+            onClick={onBackToDashboard}
+            className={cn(
+              'group relative w-10 h-10 rounded-xl flex items-center justify-center transition-all',
+              'border border-white/[0.06] bg-white/[0.04] hover:bg-white/[0.08] hover:border-white/[0.12]',
+            )}
+            title="Back to dashboard"
+          >
+            <LayoutDashboard size={16} className="text-white/70 group-hover:text-white" />
+          </button>
+          <div className="h-px w-6 bg-white/[0.08]" />
+        </>
+      )}
       {/* Per-course avatars */}
       <div className="flex-1 flex flex-col gap-2 overflow-y-auto scrollbar-none">
         {courses.map(course => {
@@ -308,7 +311,7 @@ export function MainPanel({ tabs, activeTabId, onTabSelect, rightActions, childr
                   'flex items-center gap-1.5 h-8 px-2 rounded-md text-sm font-medium whitespace-nowrap shrink-0',
                   'transition-all duration-150',
                   active
-                    ? 'bg-white/[0.08] text-white border-b-2 border-[var(--sd-accent)] px-2.5'
+                    ? 'bg-[var(--sd-accent)] text-white shadow-[0_8px_20px_rgba(40,123,255,0.20)] px-2.5'
                     : 'text-white/55 hover:text-white/90 hover:bg-white/[0.04]'
                 )}
               >

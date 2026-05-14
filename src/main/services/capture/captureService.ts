@@ -113,17 +113,32 @@ export class CaptureService {
       }
     }
 
-    // ── Auto-capture poll ────────────────────────────────────────────────
-    this.startAutoCapturePoll();
+    // Auto-capture is intentionally opt-in. The notch exposes a Start
+    // capture watch control; opening the app no longer begins mouse-up
+    // capture on its own.
   }
 
   stop() {
     globalShortcut.unregisterAll();
+    this.stopAutoCapture();
+  }
+
+  startAutoCapture() {
+    this.startAutoCapturePoll();
+    return this.isAutoCaptureEnabled();
+  }
+
+  stopAutoCapture() {
     if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
     if (this.hookStarted) {
       try { uIOhook.stop(); } catch { /* ignore */ }
       this.hookStarted = false;
     }
+    return this.isAutoCaptureEnabled();
+  }
+
+  isAutoCaptureEnabled() {
+    return this.hookStarted;
   }
 
   // ── Auto-capture: mouse-driven (PopClip pattern) ─────────────────────────

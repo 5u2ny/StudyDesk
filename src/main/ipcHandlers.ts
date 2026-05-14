@@ -13,6 +13,7 @@ import { playAlertSound } from './soundManager';
 import { focusStore } from './services/store';
 import { secureStore } from './services/keychain/secureStore';
 import { checkAccessibilityPermission, openAccessibilitySettings } from './services/capture/permissionCheck';
+import { captureService } from './services/capture/captureService';
 import { notesService } from './services/notes/notesService';
 import { todoService } from './services/todo/todoService';
 import { gmailService } from './services/gmail/gmailService';
@@ -187,6 +188,18 @@ export function setupIPC() {
     focusStore.updateCapture(req.id, req.patch);
     return focusStore.get('captures').find(c => c.id === req.id)!;
   });
+
+  ipcMain.handle('capture:autoStatus', () => ({
+    enabled: captureService.isAutoCaptureEnabled(),
+  }));
+
+  ipcMain.handle('capture:startAuto', () => ({
+    enabled: captureService.startAutoCapture(),
+  }));
+
+  ipcMain.handle('capture:stopAuto', () => ({
+    enabled: captureService.stopAutoCapture(),
+  }));
 
   // ── Focus OS: Capture Linking ──────────────────────────────────────────
   ipcMain.handle('capture:unlinked', (_e, req: { courseId?: string; limit?: number }) => {

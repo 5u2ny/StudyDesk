@@ -1,3 +1,6 @@
+export { MaterialsView } from './MaterialsView'
 export { FileDropZone } from './components/FileDropZone'
 export { MaterialFileViewer } from './components/MaterialFileViewer'
 export { MaterialsReaderView } from './components/MaterialsReaderView'
+export { inferMaterialKind } from './materialTypes'
+export type { MaterialKind } from './materialTypes'

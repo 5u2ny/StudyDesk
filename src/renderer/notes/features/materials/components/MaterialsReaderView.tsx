@@ -7,10 +7,10 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { Highlighter, ExternalLink, BookOpen } from 'lucide-react'
 import type { Note } from '@schema'
-import { HighlightMark } from '../editor/highlightMark'
-import { SourceQuote } from '../editor/sourceQuoteNode'
+import { HighlightMark } from '../../../editor/highlightMark'
+import { SourceQuote } from '../../../editor/sourceQuoteNode'
 import { ipc } from '@shared/ipc-client'
-import { parseContent } from '../parseContent'
+import { parseContent } from '../../../parseContent'
 
 export interface MaterialsReaderViewProps {
   note: Note

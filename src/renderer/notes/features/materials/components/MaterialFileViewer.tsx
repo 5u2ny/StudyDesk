@@ -3,7 +3,7 @@ import { AlertCircle, ChevronLeft, ChevronRight, ClipboardList, ExternalLink, Ey
 import type { Course, Note } from '@schema'
 import { ipc } from '@shared/ipc-client'
 import { MaterialsReaderView } from './MaterialsReaderView'
-import { loadPdfjs } from '../lib/pdfjs'
+import { loadPdfjs } from '../../../lib/pdfjs'
 
 interface MaterialFileViewerProps {
   note: Note

@@ -5,7 +5,7 @@
 
 import React, { useCallback, useState } from 'react'
 import { Upload, Loader2, FileText, AlertCircle } from 'lucide-react'
-import { extractFileText } from '../lib/extractFileText'
+import { extractFileText } from '../../../lib/extractFileText'
 import type { Note } from '@schema'
 import { ipc } from '@shared/ipc-client'
 

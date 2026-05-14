@@ -3812,6 +3812,9 @@ function FlashcardsView({
 }) {
   const [drafts, setDrafts] = useState<FlashcardDraft[]>([])
   const [syncing, setSyncing] = useState(false)
+  const [activeCardIndex, setActiveCardIndex] = useState(0)
+  const [answerRevealed, setAnswerRevealed] = useState(false)
+  const [reviewingCard, setReviewingCard] = useState(false)
 
   function generate() {
     if (!selectedText) return
@@ -3903,7 +3906,35 @@ function FlashcardsView({
     }
   }
 
-  const cards = studyItems.slice(0, 6)
+  const cards = studyItems.filter(item => item.type === 'flashcard' || item.type === 'definition' || item.type === 'concept')
+  const activeIndex = Math.min(activeCardIndex, Math.max(cards.length - 1, 0))
+  const activeCard = cards[activeIndex]
+  const activeSource = activeCard ? getStudySourceInfo(activeCard) : null
+
+  useEffect(() => {
+    if (activeCardIndex >= cards.length) {
+      setActiveCardIndex(Math.max(cards.length - 1, 0))
+    }
+  }, [activeCardIndex, cards.length])
+
+  useEffect(() => {
+    setAnswerRevealed(false)
+  }, [activeCard?.id])
+
+  async function reviewActiveCard(difficulty: NonNullable<StudyItem['difficulty']>) {
+    if (!activeCard || reviewingCard) return
+    setReviewingCard(true)
+    try {
+      await onReviewStudyItem(activeCard.id, difficulty)
+      setAnswerRevealed(false)
+      if (cards.length > 1) {
+        setActiveCardIndex(index => Math.min(index + 1, cards.length - 1))
+      }
+    } finally {
+      setReviewingCard(false)
+    }
+  }
+
   return (
     <section className="phase3-card flashcards-view">
       <header className="phase3-header">
@@ -3979,34 +4010,72 @@ function FlashcardsView({
           ))}
         </div>
       )}
-      {drafts.length === 0 && cards.length > 0 && (
-        <>
-          <h2 className="section-spacer">Study queue ({studyItems.length})</h2>
-          <div className="flashcard-board">
-            {cards.map((item, index) => {
-              const source = getStudySourceInfo(item)
-              return (
-                <article className="study-card" key={item.id}>
-                  <span>{item.type === 'question' ? 'Question' : 'Card'} {index + 1}</span>
-                  <h2>{item.front}</h2>
-                  <p>{item.back || 'Answer will be added during review.'}</p>
-                  {source && (
-                    <div className="study-source-strip">
-                      <span>{source.isMaterial ? 'Source material' : 'Source note'}: {source.title}</span>
-                      <button onClick={() => onOpenStudyItemSource(item)}>Open source</button>
-                    </div>
-                  )}
-                  <footer><small>{item.type}</small><strong>{item.reviewCount} reviews</strong></footer>
-                  <div className="review-actions">
-                    {(['again', 'hard', 'good', 'easy'] as const).map(difficulty => (
-                      <button key={difficulty} onClick={() => onReviewStudyItem(item.id, difficulty)}>{difficulty}</button>
-                    ))}
-                  </div>
-                </article>
-              )
-            })}
+      {drafts.length === 0 && activeCard && (
+        <div className="flashcard-study-shell">
+          <div className="flashcard-study-topline">
+            <span>Card {activeIndex + 1} of {cards.length}</span>
+            <span>{activeCard.reviewCount} review{activeCard.reviewCount === 1 ? '' : 's'}</span>
           </div>
-        </>
+          <article className="flashcard-study-card">
+            <div className="flashcard-study-prompt">
+              <span>{activeCard.type}</span>
+              <h2>{activeCard.front}</h2>
+            </div>
+
+            {activeSource && (
+              <div className="study-source-strip">
+                <span>{activeSource.isMaterial ? 'Source material' : 'Source note'}: {activeSource.title}</span>
+                <button onClick={() => onOpenStudyItemSource(activeCard)}>Open source</button>
+              </div>
+            )}
+
+            <div className={cn('flashcard-study-answer', !answerRevealed && 'is-hidden')}>
+              {answerRevealed ? (
+                <p>{activeCard.back || 'No answer has been saved for this card yet.'}</p>
+              ) : (
+                <button className="flashcard-reveal-button" onClick={() => setAnswerRevealed(true)}>
+                  Reveal answer
+                </button>
+              )}
+            </div>
+
+            <footer className="flashcard-study-footer">
+              {answerRevealed ? (
+                <div className="review-actions flashcard-review-actions" aria-label="Grade this card">
+                  {(['again', 'hard', 'good', 'easy'] as const).map(difficulty => (
+                    <button
+                      key={difficulty}
+                      disabled={reviewingCard}
+                      onClick={() => void reviewActiveCard(difficulty)}
+                    >
+                      {reviewingCard ? 'Saving...' : difficulty}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flashcard-study-hint">Try to answer before revealing.</div>
+              )}
+            </footer>
+          </article>
+          {cards.length > 1 && (
+            <div className="flashcard-study-nav">
+              <button
+                className="outline-button"
+                onClick={() => setActiveCardIndex(index => Math.max(index - 1, 0))}
+                disabled={activeIndex === 0}
+              >
+                Previous
+              </button>
+              <button
+                className="outline-button"
+                onClick={() => setActiveCardIndex(index => Math.min(index + 1, cards.length - 1))}
+                disabled={activeIndex >= cards.length - 1}
+              >
+                Next
+              </button>
+            </div>
+          )}
+        </div>
       )}
       {drafts.length === 0 && cards.length === 0 && !selectedText && (
         <EmptyState icon={Layers} title="No flashcards yet" description="Select a document to generate flashcards, or create them manually." />

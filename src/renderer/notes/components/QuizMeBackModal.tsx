@@ -10,29 +10,39 @@
 // actions per row instead of one.
 
 import React, { useState, useMemo } from 'react'
-import { Check, X as XIcon, Brain } from 'lucide-react'
+import { X as XIcon, Brain } from 'lucide-react'
 import type { CardCandidate } from '../lib/extractCards'
 
 type RowState = 'kept' | 'skipped'
+type ReviewMode = 'flashcards' | 'questions'
 
-interface RowDraft extends CardCandidate {
+export interface ReviewCandidate {
+  cardKey: string
+  front: string
+  back?: string
+  position: number
+  source: CardCandidate['source'] | 'question'
+}
+
+type RowDraft = ReviewCandidate & {
   state: RowState
   /** Editable copy of front/back so the user can tweak before commit. */
   front: string
-  back: string
+  back?: string
 }
 
 interface Props {
   open: boolean
   onClose: () => void
-  candidates: ReadonlyArray<CardCandidate>
+  candidates: ReadonlyArray<ReviewCandidate>
   /** Already-existing fronts so the modal can flag duplicates. */
   existingFronts: ReadonlyArray<string>
+  mode?: ReviewMode
   /** Called once with all kept rows when the user commits. */
-  onCommit: (kept: Array<{ front: string; back: string; cardKey: string }>) => void | Promise<void>
+  onCommit: (kept: Array<{ front: string; back?: string; cardKey: string }>) => void | Promise<void>
 }
 
-export function QuizMeBackModal({ open, onClose, candidates, existingFronts, onCommit }: Props) {
+export function QuizMeBackModal({ open, onClose, candidates, existingFronts, mode = 'flashcards', onCommit }: Props) {
   // Initialize one draft row per candidate. "kept" is the default —
   // the user has to actively skip the bad ones, not opt-in to good
   // ones. This matches the pattern in Anki's import dialog.
@@ -50,6 +60,27 @@ export function QuizMeBackModal({ open, onClose, candidates, existingFronts, onC
   if (!open) return null
 
   const keptCount = drafts.filter(d => d.state === 'kept').length
+  const copy = mode === 'questions'
+    ? {
+        eyebrow: 'Extract quiz',
+        title: `${candidates.length} question candidate${candidates.length === 1 ? '' : 's'} from this material`,
+        description: 'Skip weak questions. Edit the prompt or optional answer before saving.',
+        empty: 'No quiz questions extracted from this material. Try a material with headings, definitions, or longer explanatory lines.',
+        duplicate: 'already a question',
+        front: 'Question',
+        back: 'Optional answer or explanation',
+        commit: 'Save',
+      }
+    : {
+        eyebrow: 'Quiz me back',
+        title: `${candidates.length} candidate${candidates.length === 1 ? '' : 's'} from this note`,
+        description: 'Skip the ones that aren’t worth a card. Edit the front/back if needed. Then commit.',
+        empty: 'No candidates extracted from this note. Try adding ### headings or definition sentences ("X is …").',
+        duplicate: 'already a card',
+        front: 'Front',
+        back: 'Back',
+        commit: 'Commit',
+      }
 
   const update = (i: number, patch: Partial<RowDraft>) =>
     setDrafts(prev => prev.map((d, idx) => idx === i ? { ...d, ...patch } : d))
@@ -59,15 +90,15 @@ export function QuizMeBackModal({ open, onClose, candidates, existingFronts, onC
       <div className="quiz-back-shell" onClick={e => e.stopPropagation()} role="dialog" aria-label="Quiz me back">
         <header className="quiz-back-header">
           <div>
-            <p className="phase3-eyebrow">Quiz me back</p>
-            <h1>{candidates.length} candidate{candidates.length === 1 ? '' : 's'} from this note</h1>
-            <span>Skip the ones that aren&apos;t worth a card. Edit the front/back if needed. Then commit.</span>
+            <p className="phase3-eyebrow">{copy.eyebrow}</p>
+            <h1>{copy.title}</h1>
+            <span>{copy.description}</span>
           </div>
           <button onClick={onClose} className="cmdk-close" aria-label="Close"><XIcon size={14} /></button>
         </header>
         <div className="quiz-back-list">
           {drafts.length === 0 && (
-            <div className="cmdk-empty">No candidates extracted from this note. Try adding ### headings or definition sentences (&quot;X is …&quot;).</div>
+            <div className="cmdk-empty">{copy.empty}</div>
           )}
           {drafts.map((d, i) => {
             const dup = isDuplicate(d.front)
@@ -79,20 +110,20 @@ export function QuizMeBackModal({ open, onClose, candidates, existingFronts, onC
                 <div className="quiz-back-row-tag">
                   <Brain size={12} />
                   <span>{d.source}</span>
-                  {dup && <span className="quiz-back-dup">already a card</span>}
+                  {dup && <span className="quiz-back-dup">{copy.duplicate}</span>}
                 </div>
                 <input
                   className="quiz-edit-input"
                   value={d.front}
                   onChange={e => update(i, { front: e.target.value })}
-                  placeholder="Front"
+                  placeholder={copy.front}
                   disabled={d.state === 'skipped'}
                 />
                 <textarea
                   className="quiz-edit-input quiz-edit-textarea"
-                  value={d.back}
+                  value={d.back ?? ''}
                   onChange={e => update(i, { back: e.target.value })}
-                  placeholder="Back"
+                  placeholder={copy.back}
                   rows={2}
                   disabled={d.state === 'skipped'}
                 />
@@ -116,15 +147,15 @@ export function QuizMeBackModal({ open, onClose, candidates, existingFronts, onC
             disabled={keptCount === 0}
             onClick={async () => {
               const kept = drafts
-                .filter(d => d.state === 'kept' && d.front.trim() && d.back.trim())
+                .filter(d => d.state === 'kept' && d.front.trim() && (mode === 'questions' || (d.back ?? '').trim()))
                 .filter(d => !isDuplicate(d.front))
-                .map(d => ({ front: d.front.trim(), back: d.back.trim(), cardKey: d.cardKey }))
+                .map(d => ({ front: d.front.trim(), back: (d.back ?? '').trim() || undefined, cardKey: d.cardKey }))
               if (kept.length === 0) { onClose(); return }
               await onCommit(kept)
               onClose()
             }}
           >
-            Commit {keptCount}
+            {copy.commit} {keptCount}
           </button>
         </footer>
       </div>

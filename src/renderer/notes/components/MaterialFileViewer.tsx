@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertCircle, ChevronLeft, ChevronRight, ExternalLink, Eye, FileText, Layers, Presentation } from 'lucide-react'
+import { AlertCircle, ChevronLeft, ChevronRight, ClipboardList, ExternalLink, Eye, FileText, Layers, Presentation } from 'lucide-react'
 import type { Course, Note } from '@schema'
 import { ipc } from '@shared/ipc-client'
 import { MaterialsReaderView } from './MaterialsReaderView'
@@ -14,6 +14,7 @@ interface MaterialFileViewerProps {
   sourceLabel?: string
   onCaptureCreated?: () => void
   onExtractFlashcards?: () => void
+  onExtractQuiz?: () => void
 }
 
 type PdfLoadStatus = 'idle' | 'loading' | 'ready' | 'error'
@@ -348,6 +349,7 @@ export function MaterialFileViewer({
   sourceLabel,
   onCaptureCreated,
   onExtractFlashcards,
+  onExtractQuiz,
 }: MaterialFileViewerProps) {
   const hasSourcePath = Boolean(sourcePath)
   const extension = useMemo(() => getFileExtension(filename, sourcePath), [filename, sourcePath])
@@ -472,6 +474,17 @@ export function MaterialFileViewer({
             >
               <Layers size={14} />
               <span>Extract Flashcards</span>
+            </button>
+          )}
+          {onExtractQuiz && (
+            <button
+              className="material-file-open-source"
+              onClick={onExtractQuiz}
+              aria-label="Extract quiz"
+              title="Extract quiz questions from this material"
+            >
+              <ClipboardList size={14} />
+              <span>Extract Quiz</span>
             </button>
           )}
           <button

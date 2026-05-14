@@ -135,6 +135,7 @@ interface FlashcardDraft {
 
 interface QuizQuestionDraft {
   question: string
+  answer?: string
 }
 
 // Ticket 1.1 — IA collapse 10 → 6 visible tabs.
@@ -161,6 +162,37 @@ const BLOCK_TYPES = new Set([
 
 function noteText(content: string): string {
   return textFromTipTapJson(content, { blockTypes: BLOCK_TYPES, fallback: content })
+}
+
+function makeQuestionCandidateKey(front: string, position: number): string {
+  const s = front.toLowerCase().replace(/\s+/g, ' ').trim() + '|' + position
+  let h = 5381
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) & 0xffffffff
+  return ('00000000' + (h >>> 0).toString(16)).slice(-8)
+}
+
+function extractQuestionDraftsFromText(text: string): QuizQuestionDraft[] {
+  const questions: QuizQuestionDraft[] = []
+  const lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean)
+  for (const line of lines) {
+    if (line.length < 10) continue
+    // Headings or short standalone lines -> concept question
+    if (line.length < 60 && !line.includes('.')) {
+      questions.push({ question: `What should you remember about ${line}?` })
+    // Definition patterns
+    } else if (/\b(is|means|refers to|defined as)\b/i.test(line)) {
+      const term = line.split(/\b(is|means|refers to|defined as)\b/i)[0].trim()
+      if (term.length > 3 && term.length < 80) {
+        questions.push({ question: `What does "${term}" mean?`, answer: line })
+      }
+    // Longer meaningful sentences
+    } else if (line.length > 40) {
+      const shortened = line.slice(0, 80).replace(/[.,;:]+$/, '')
+      questions.push({ question: `Why is this important: ${shortened}?`, answer: line })
+    }
+    if (questions.length >= 8) break
+  }
+  return questions
 }
 
 /** Count how many notes embed a sourceQuote pointing at the given path.
@@ -272,7 +304,8 @@ function PdfTextImportControl({
 
 function extractQuestionsFromNote(note: Note): QuizQuestionDraft[] {
   const text = noteText(note.content)
-  return text.split(/\n+/).map(l => l.trim()).filter(l => /^\d+\.\s/.test(l)).map(l => ({ question: l.replace(/^\d+\.\s*/, '') }))
+  const numbered = text.split(/\n+/).map(l => l.trim()).filter(l => /^\d+\.\s/.test(l)).map(l => ({ question: l.replace(/^\d+\.\s*/, '') }))
+  return numbered.length > 0 ? numbered : extractQuestionDraftsFromText(text)
 }
 
 function defaultQuickAddForm(kind: QuickAddKind, selectedText = ''): QuickAddForm {
@@ -2494,6 +2527,9 @@ function MaterialsView({
   const [showFlashcardReview, setShowFlashcardReview] = useState(false)
   const [flashcardCandidates, setFlashcardCandidates] = useState<ReadonlyArray<import('./lib/extractCards').CardCandidate>>([])
   const [flashcardSourceNote, setFlashcardSourceNote] = useState<Note | null>(null)
+  const [showQuestionReview, setShowQuestionReview] = useState(false)
+  const [questionCandidates, setQuestionCandidates] = useState<ReadonlyArray<{ cardKey: string; front: string; back?: string; position: number; source: 'question' }>>([])
+  const [questionSourceNote, setQuestionSourceNote] = useState<Note | null>(null)
   if (!selectedCourse) {
     return (
       <section className="phase3-card">
@@ -2549,6 +2585,20 @@ function MaterialsView({
     setFlashcardSourceNote(note)
     setFlashcardCandidates(candidates)
     setShowFlashcardReview(true)
+  }
+
+  function openMaterialQuiz(note: Note) {
+    const questions = extractQuestionDraftsFromText(noteText(note.content))
+    const candidates = questions.map((draft, index) => ({
+      cardKey: makeQuestionCandidateKey(draft.question, index + 1),
+      front: draft.question,
+      back: draft.answer,
+      position: index + 1,
+      source: 'question' as const,
+    }))
+    setQuestionSourceNote(note)
+    setQuestionCandidates(candidates)
+    setShowQuestionReview(true)
   }
 
   const uploadDropZone = (
@@ -2692,6 +2742,7 @@ function MaterialsView({
                     onStatus('Highlight saved as a source-linked capture.')
                   }}
                   onExtractFlashcards={() => void openMaterialFlashcards(selectedMaterial.note)}
+                  onExtractQuiz={() => openMaterialQuiz(selectedMaterial.note)}
                 />
               ) : (
                 <CourseCalendarEmpty text="Select a material to read it here." />
@@ -2732,6 +2783,37 @@ function MaterialsView({
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err)
             onStatus(`Saved ${created}/${kept.length} card${created === 1 ? '' : 's'} before failing: ${msg}`)
+          }
+        }}
+      />
+      <QuizMeBackModal
+        open={showQuestionReview}
+        onClose={() => setShowQuestionReview(false)}
+        candidates={questionCandidates}
+        existingFronts={studyItems.filter(s => s.type === 'question').map(s => s.front ?? '')}
+        mode="questions"
+        onCommit={async (kept) => {
+          const sourceNote = questionSourceNote
+          if (!sourceNote) return
+          let created = 0
+          try {
+            for (const candidate of kept) {
+              await ipc.invoke('study:create', {
+                courseId: sourceNote.courseId ?? selectedCourse.id,
+                sourceNoteId: sourceNote.id,
+                sourceCardKey: candidate.cardKey,
+                type: 'question',
+                front: candidate.front,
+                back: candidate.back,
+              })
+              created++
+            }
+            const skipped = Math.max(0, questionCandidates.length - created)
+            onStatus(`${created} source-linked question${created === 1 ? '' : 's'} added from "${sourceNote.title || 'material'}"${skipped > 0 ? ` (${skipped} skipped)` : ''}.`)
+            onRefresh()
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err)
+            onStatus(`Saved ${created}/${kept.length} question${created === 1 ? '' : 's'} before failing: ${msg}`)
           }
         }}
       />
@@ -3531,27 +3613,7 @@ function QuizView({ selected, selectedText, courseId, studyItems, onSave }: { se
 
   function generate() {
     if (!selectedText) return
-    const questions: QuizQuestionDraft[] = []
-    const lines = selectedText.split(/\n+/).map(l => l.trim()).filter(Boolean)
-    for (const line of lines) {
-      if (line.length < 10) continue
-      // Headings or short standalone lines -> concept question
-      if (line.length < 60 && !line.includes('.')) {
-        questions.push({ question: `What should you remember about ${line}?` })
-      // Definition patterns
-      } else if (/\b(is|means|refers to|defined as)\b/i.test(line)) {
-        const term = line.split(/\b(is|means|refers to|defined as)\b/i)[0].trim()
-        if (term.length > 3 && term.length < 80) {
-          questions.push({ question: `What does "${term}" mean?` })
-        }
-      // Longer meaningful sentences
-      } else if (line.length > 40) {
-        const shortened = line.slice(0, 80).replace(/[.,;:]+$/, '')
-        questions.push({ question: `Why is this important: ${shortened}?` })
-      }
-      if (questions.length >= 8) break
-    }
-    setDrafts(questions)
+    setDrafts(extractQuestionDraftsFromText(selectedText))
   }
 
   function removeQuestion(index: number) {
@@ -3601,7 +3663,7 @@ function QuizView({ selected, selectedText, courseId, studyItems, onSave }: { se
         const front = q.question.trim()
         if (!front) { skipped++; continue }
         if (isDuplicateQuestion(studyItems, front)) { skipped++; continue }
-        await ipc.invoke('study:create', { front, type: 'question', courseId })
+        await ipc.invoke('study:create', { front, back: q.answer, type: 'question', courseId })
         created++
       }
       setDrafts([])

@@ -3807,7 +3807,8 @@ body {
   overflow: hidden auto;
 }
 
-.flashcard-study-shell {
+.flashcard-study-shell,
+.quiz-study-shell {
   flex: 1;
   min-height: 0;
   display: grid;
@@ -3842,6 +3843,12 @@ body {
   box-shadow: 0 22px 60px rgba(0, 0, 0, 0.22);
 }
 
+.quiz-study-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.035)),
+    rgba(10, 12, 17, 0.88);
+}
+
 .flashcard-study-prompt {
   display: grid;
   gap: 12px;
@@ -3860,6 +3867,32 @@ body {
   color: #f5f5f7;
   font-size: 30px;
   line-height: 1.12;
+}
+
+.quiz-study-edit {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.045);
+  color: #f5f5f7;
+  padding: 14px;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1.4;
+  outline: none;
+}
+
+.quiz-study-edit:focus {
+  border-color: rgba(125, 178, 255, 0.45);
+  box-shadow: 0 0 0 3px rgba(40, 123, 255, 0.12);
+}
+
+.quiz-study-answer-edit {
+  min-height: 120px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 16px;
 }
 
 .flashcard-study-answer {
@@ -3914,6 +3947,11 @@ body {
 }
 
 .flashcard-review-actions {
+  margin-top: 0;
+}
+
+.quiz-review-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 0;
 }
 

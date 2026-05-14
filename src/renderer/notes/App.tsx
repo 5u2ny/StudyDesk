@@ -873,6 +873,7 @@ export default function App() {
     { id: 'calendar',   label: 'Calendar',  icon: <CalendarDays size={14} /> },
     { id: 'grades',     label: 'Grades',    icon: <BarChart3 size={14} /> },
     { id: 'deadlines',  label: 'Deadlines', icon: <Clock3 size={14} /> },
+    { id: 'quiz',       label: 'Quiz',      icon: <HelpCircle size={14} /> },
     { id: 'flashcards', label: 'Flashcards', icon: <Layers size={14} /> },
     { id: 'materials',  label: 'Materials', icon: <Folder size={14} /> },
   ]
@@ -1771,7 +1772,7 @@ function WorkspaceSurface({
       // is rendered inline by DeadlinesView so the user can swap layouts.
       return <DeadlinesView deadlines={deadlines} notes={notes} captures={captures} studyItems={studyItems} courses={courses} courseId={currentCourse?.id} onSelectNote={onSelect} onCompleteDeadline={onCompleteDeadline} />
     case 'quiz':
-      return <QuizView selected={selected} selectedText={selectedText} courseId={currentCourse?.id} studyItems={studyItems} onSave={onQuizSave} />
+      return <QuizView selected={selected} selectedText={selectedText} courseId={currentCourse?.id} studyItems={studyItems} onReviewStudyItem={onReviewStudyItem} onRefresh={onRefresh} onOpenStudyItemSource={onOpenStudyItemSource} getStudySourceInfo={getStudySourceInfo} />
     case 'flashcards':
       return <FlashcardsView selectedText={selectedText} studyItems={studyItems} courseId={currentCourse?.id} onReviewStudyItem={onReviewStudyItem} onSave={onFlashcardSave} onStatus={onStatus} onOpenPanic={onOpenPanic} onOpenStudyItemSource={onOpenStudyItemSource} getStudySourceInfo={getStudySourceInfo} />
     case 'materials':
@@ -3671,74 +3672,146 @@ function DashboardView({
   )
 }
 
-function QuizView({ selected, selectedText, courseId, studyItems, onSave }: { selected: Note | null; selectedText: string; courseId?: string; studyItems: StudyItem[]; onSave: (note: Note) => void }) {
+function QuizView({
+  selected,
+  selectedText,
+  courseId,
+  studyItems,
+  onReviewStudyItem,
+  onRefresh,
+  onOpenStudyItemSource,
+  getStudySourceInfo,
+}: {
+  selected: Note | null
+  selectedText: string
+  courseId?: string
+  studyItems: StudyItem[]
+  onReviewStudyItem: (id: string, difficulty: NonNullable<StudyItem['difficulty']>) => Promise<void>
+  onRefresh: () => void
+  onOpenStudyItemSource: (item: StudyItem) => void
+  getStudySourceInfo: (item: StudyItem) => StudySourceInfo | null
+}) {
   const [drafts, setDrafts] = useState<QuizQuestionDraft[]>([])
-  const [savedNote, setSavedNote] = useState<Note | null>(null)
+  const [activeQuestionIndex, setActiveQuestionIndex] = useState(0)
+  const [activeDraftIndex, setActiveDraftIndex] = useState(0)
+  const [answerRevealed, setAnswerRevealed] = useState(false)
+  const [draftAnswerRevealed, setDraftAnswerRevealed] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [statusMsg, setStatusMsg] = useState<string | null>(null)
 
   function generate() {
     if (!selectedText) return
-    setDrafts(extractQuestionDraftsFromText(selectedText))
+    const next = extractQuestionDraftsFromText(selectedText)
+    setDrafts(next)
+    setActiveDraftIndex(0)
+    setDraftAnswerRevealed(false)
+    setError(null)
+    setStatusMsg(next.length > 0
+      ? `${next.length} question candidate${next.length === 1 ? '' : 's'} ready to review.`
+      : 'No question candidates found in the selected document.')
   }
 
   function removeQuestion(index: number) {
     setDrafts(prev => prev.filter((_, i) => i !== index))
+    setActiveDraftIndex(index => Math.max(0, Math.min(index, drafts.length - 2)))
+    setDraftAnswerRevealed(false)
   }
 
   function updateQuestion(index: number, value: string) {
-    setDrafts(prev => prev.map((q, i) => i === index ? { question: value } : q))
+    setDrafts(prev => prev.map((q, i) => i === index ? { ...q, question: value } : q))
   }
 
-  async function handleSave() {
-    if (drafts.length === 0) return
+  function updateQuestionAnswer(index: number, value: string) {
+    setDrafts(prev => prev.map((q, i) => i === index ? { ...q, answer: value } : q))
+  }
+
+  const questions = studyItems.filter(item => item.type === 'question')
+  const activeIndex = Math.min(activeQuestionIndex, Math.max(questions.length - 1, 0))
+  const activeQuestion = questions[activeIndex]
+  const activeSource = activeQuestion ? getStudySourceInfo(activeQuestion) : null
+  const activeDraft = drafts[activeDraftIndex]
+  const selectedSourceTitle = selected?.title ?? 'Selected document'
+
+  useEffect(() => {
+    if (activeQuestionIndex >= questions.length) {
+      setActiveQuestionIndex(Math.max(questions.length - 1, 0))
+    }
+  }, [activeQuestionIndex, questions.length])
+
+  useEffect(() => {
+    if (activeDraftIndex >= drafts.length) {
+      setActiveDraftIndex(Math.max(drafts.length - 1, 0))
+    }
+  }, [activeDraftIndex, drafts.length])
+
+  useEffect(() => {
+    setAnswerRevealed(false)
+  }, [activeQuestion?.id])
+
+  useEffect(() => {
+    setDraftAnswerRevealed(false)
+  }, [activeDraftIndex])
+
+  async function reviewActiveQuestion(difficulty: 'again' | 'good') {
+    if (!activeQuestion || saving) return
     setSaving(true)
     setError(null)
-    const content = JSON.stringify({
-      type: 'doc',
-      content: [
-        { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Quiz draft' }] },
-        ...drafts.map((q, i) => ({
-          type: 'paragraph',
-          content: [{ type: 'text', text: `${i + 1}. ${q.question}` }],
-        })),
-      ],
-    })
     try {
-      const note = await ipc.invoke<Note>('notes:create', { title: `Quiz: ${selected?.title || 'Study'}`, content })
-      const updated = await ipc.invoke<Note>('notes:update', { id: note.id, patch: { documentType: 'reading', courseId, tags: ['quiz'] } })
-      setSavedNote(updated)
-      setStatusMsg(`Saved as "${updated.title}".`)
-      onSave(updated)
+      await onReviewStudyItem(activeQuestion.id, difficulty)
+      setStatusMsg(difficulty === 'again' ? 'Scheduled for another pass.' : 'Marked as known.')
+      setAnswerRevealed(false)
+      if (questions.length > 1) {
+        setActiveQuestionIndex(index => Math.min(index + 1, questions.length - 1))
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      setError(`Could not save quiz: ${msg}`)
+      setError(`Could not review question: ${msg}`)
     } finally { setSaving(false) }
   }
 
-  async function saveAsStudyItems() {
-    if (drafts.length === 0 && !savedNote) return
+  async function saveActiveQuestionForReview() {
+    if (!activeQuestion || saving) return
     setSaving(true)
     setError(null)
-    const questions = drafts.length > 0 ? drafts : []
-    const items = questions.length > 0 ? questions : (savedNote ? extractQuestionsFromNote(savedNote) : [])
-    let created = 0
-    let skipped = 0
     try {
-      for (const q of items) {
-        const front = q.question.trim()
-        if (!front) { skipped++; continue }
-        if (isDuplicateQuestion(studyItems, front)) { skipped++; continue }
-        await ipc.invoke('study:create', { front, back: q.answer, type: 'question', courseId })
-        created++
-      }
-      setDrafts([])
-      setSavedNote(null)
-      setStatusMsg(`Created ${created} study question${created === 1 ? '' : 's'}${skipped > 0 ? ` (${skipped} skipped as duplicates)` : ''}.`)
+      await ipc.invoke('study:update', { id: activeQuestion.id, patch: { nextReviewAt: Date.now() } })
+      setStatusMsg('Question kept in the review queue.')
+      onRefresh()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      setError(`Created ${created}/${items.length} before failing: ${msg}`)
+      setError(`Could not keep question for review: ${msg}`)
+    } finally { setSaving(false) }
+  }
+
+  async function saveDraftQuestion(index: number) {
+    const draft = drafts[index]
+    if (!draft || saving) return
+    const front = draft.question.trim()
+    if (!front) return
+    setSaving(true)
+    setError(null)
+    try {
+      if (isDuplicateQuestion(studyItems, front)) {
+        removeQuestion(index)
+        setStatusMsg('Skipped duplicate question.')
+        return
+      }
+      await ipc.invoke('study:create', {
+        courseId: selected?.courseId ?? courseId,
+        sourceNoteId: selected?.id,
+        sourceCardKey: makeQuestionCandidateKey(front, index + 1),
+        type: 'question',
+        front,
+        back: draft.answer,
+        explanation: draft.answer,
+      })
+      removeQuestion(index)
+      setStatusMsg(`Saved question for review${selected?.title ? ` from "${selected.title}"` : ''}.`)
+      onRefresh()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setError(`Could not save question: ${msg}`)
     } finally { setSaving(false) }
   }
 
@@ -3746,18 +3819,20 @@ function QuizView({ selected, selectedText, courseId, studyItems, onSave }: { se
     <section className="phase3-card quiz-view">
       <header className="phase3-header">
         <div>
-          <p className="phase3-eyebrow">Quiz builder</p>
-          <h1>{selected ? `Quiz from ${selected.title}` : 'Quiz builder'}</h1>
-          <span>Extract question candidates from the selected document text using local heuristics. Review and edit before saving.</span>
+          <p className="phase3-eyebrow">Quiz</p>
+          <h1>Self-check questions</h1>
+          <span>{questions.length > 0 ? 'Reveal the answer, then mark whether you knew it.' : 'Generate or save questions from source materials to start a quiz session.'}</span>
         </div>
-        {drafts.length === 0 && !savedNote
-          ? <button className="review-button" onClick={generate} disabled={!selectedText}><HelpCircle size={15} /> Extract questions</button>
-          : drafts.length > 0
-            ? <div className="phase3-actions"><button className="review-button" onClick={handleSave} disabled={saving}><HelpCircle size={15} /> {saving ? 'Saving...' : 'Save quiz draft'}</button><button className="outline-button" onClick={saveAsStudyItems} disabled={saving}><ClipboardList size={15} /> Also save as study questions</button></div>
-            : savedNote
-              ? <button className="outline-button" onClick={saveAsStudyItems} disabled={saving}><ClipboardList size={15} /> {saving ? 'Saving...' : 'Also save as study questions'}</button>
-              : null
-        }
+        <div className="phase3-actions">
+          {drafts.length > 0 && (
+            <button className="outline-button" onClick={() => { setDrafts([]); setDraftAnswerRevealed(false); setStatusMsg(null) }} disabled={saving}>
+              Clear candidates
+            </button>
+          )}
+          <button className="review-button" onClick={generate} disabled={!selectedText || saving}>
+            <HelpCircle size={15} /> Extract questions
+          </button>
+        </div>
       </header>
       {error && (
         <div className="phase3-error" role="alert">
@@ -3768,22 +3843,143 @@ function QuizView({ selected, selectedText, courseId, studyItems, onSave }: { se
       {statusMsg && !error && (
         <div className="phase3-status" role="status">{statusMsg}</div>
       )}
-      {!selectedText && drafts.length === 0 && !savedNote && (
-        <EmptyHint message="No document selected" hint="Select a document to generate quiz questions from its content." />
-      )}
-      {selectedText && drafts.length === 0 && !savedNote && (
-        <div className="phase3-panel">
-          <p className="empty-hint">Click "Extract questions" to pull quiz candidates from the selected document via local heuristics.</p>
+
+      {drafts.length > 0 && activeDraft && (
+        <div className="quiz-study-shell">
+          <div className="flashcard-study-topline">
+            <span>Candidate {activeDraftIndex + 1} of {drafts.length}</span>
+            <span>{selected ? selectedSourceTitle : 'Unsourced question'}</span>
+          </div>
+          <article className="flashcard-study-card quiz-study-card">
+            <div className="flashcard-study-prompt">
+              <span>Question candidate</span>
+              <textarea
+                className="quiz-study-edit"
+                value={activeDraft.question}
+                onChange={e => updateQuestion(activeDraftIndex, e.target.value)}
+                aria-label="Question"
+              />
+            </div>
+
+            {selected && (
+              <div className="study-source-strip">
+                <span>Source note: {selectedSourceTitle}</span>
+                <button
+                  onClick={() => onOpenStudyItemSource({
+                    id: `draft-${selected.id}`,
+                    courseId: selected.courseId ?? courseId,
+                    sourceNoteId: selected.id,
+                    type: 'question',
+                    front: activeDraft.question,
+                    reviewCount: 0,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                  })}
+                >
+                  Open source
+                </button>
+              </div>
+            )}
+
+            <div className={cn('flashcard-study-answer', !draftAnswerRevealed && 'is-hidden')}>
+              {draftAnswerRevealed ? (
+                <textarea
+                  className="quiz-study-edit quiz-study-answer-edit"
+                  value={activeDraft.answer ?? ''}
+                  onChange={e => updateQuestionAnswer(activeDraftIndex, e.target.value)}
+                  placeholder="Optional answer or explanation"
+                  aria-label="Answer or explanation"
+                />
+              ) : (
+                <button className="flashcard-reveal-button" onClick={() => setDraftAnswerRevealed(true)}>
+                  Reveal answer
+                </button>
+              )}
+            </div>
+
+            <footer className="flashcard-study-footer">
+              {draftAnswerRevealed ? (
+                <div className="review-actions quiz-review-actions" aria-label="Review generated question">
+                  <button disabled={saving} onClick={() => void saveDraftQuestion(activeDraftIndex)}>Save for review</button>
+                  <button disabled={saving} onClick={() => removeQuestion(activeDraftIndex)}>Skip</button>
+                </div>
+              ) : (
+                <div className="flashcard-study-hint">Review the prompt before saving it to your study queue.</div>
+              )}
+            </footer>
+          </article>
         </div>
       )}
-      {drafts.length > 0 && (
-        <div className="quiz-grid">
-          {drafts.map((draft, index) => (
-            <article className="quiz-card" key={index}>
-              <small>Question {index + 1} <button className="inline-action" onClick={() => removeQuestion(index)}>Remove</button></small>
-              <input value={draft.question} onChange={e => updateQuestion(index, e.target.value)} className="quiz-edit-input" />
-            </article>
-          ))}
+
+      {drafts.length === 0 && activeQuestion && (
+        <div className="quiz-study-shell">
+          <div className="flashcard-study-topline">
+            <span>Question {activeIndex + 1} of {questions.length}</span>
+            <span>{activeQuestion.reviewCount} review{activeQuestion.reviewCount === 1 ? '' : 's'}</span>
+          </div>
+          <article className="flashcard-study-card quiz-study-card">
+            <div className="flashcard-study-prompt">
+              <span>Self-check</span>
+              <h2>{activeQuestion.front}</h2>
+            </div>
+
+            {activeSource && (
+              <div className="study-source-strip">
+                <span>{activeSource.isMaterial ? 'Source material' : 'Source note'}: {activeSource.title}</span>
+                <button onClick={() => onOpenStudyItemSource(activeQuestion)}>Open source</button>
+              </div>
+            )}
+
+            <div className={cn('flashcard-study-answer', !answerRevealed && 'is-hidden')}>
+              {answerRevealed ? (
+                <p>{activeQuestion.back || activeQuestion.explanation || 'No answer has been saved for this question yet.'}</p>
+              ) : (
+                <button className="flashcard-reveal-button" onClick={() => setAnswerRevealed(true)}>
+                  Reveal answer
+                </button>
+              )}
+            </div>
+
+            <footer className="flashcard-study-footer">
+              {answerRevealed ? (
+                <div className="review-actions quiz-review-actions" aria-label="Grade this question">
+                  <button disabled={saving} onClick={() => void reviewActiveQuestion('good')}>Knew it</button>
+                  <button disabled={saving} onClick={() => void reviewActiveQuestion('again')}>Missed it</button>
+                  <button disabled={saving} onClick={() => void saveActiveQuestionForReview()}>Save for review</button>
+                </div>
+              ) : (
+                <div className="flashcard-study-hint">Answer from memory before revealing.</div>
+              )}
+            </footer>
+          </article>
+          {questions.length > 1 && (
+            <div className="flashcard-study-nav">
+              <button
+                className="outline-button"
+                onClick={() => setActiveQuestionIndex(index => Math.max(index - 1, 0))}
+                disabled={activeIndex === 0}
+              >
+                Previous
+              </button>
+              <button
+                className="outline-button"
+                onClick={() => setActiveQuestionIndex(index => Math.min(index + 1, questions.length - 1))}
+                disabled={activeIndex >= questions.length - 1}
+              >
+                Next
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {drafts.length === 0 && !activeQuestion && (
+        <div className="phase3-panel">
+          {selectedText ? (
+            <p className="empty-hint">Click "Extract questions" to create local question candidates from the selected document. Nothing is saved until you review it.</p>
+          ) : (
+            <EmptyHint message="No quiz questions yet" hint="Select a material or note, extract questions, then save them for review." />
+          )}
         </div>
       )}
     </section>

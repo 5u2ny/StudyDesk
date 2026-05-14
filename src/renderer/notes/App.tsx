@@ -873,6 +873,7 @@ export default function App() {
     { id: 'calendar',   label: 'Calendar',  icon: <CalendarDays size={14} /> },
     { id: 'grades',     label: 'Grades',    icon: <BarChart3 size={14} /> },
     { id: 'deadlines',  label: 'Deadlines', icon: <Clock3 size={14} /> },
+    { id: 'flashcards', label: 'Flashcards', icon: <Layers size={14} /> },
     { id: 'materials',  label: 'Materials', icon: <Folder size={14} /> },
   ]
   // Overflow menu for less-used tools.

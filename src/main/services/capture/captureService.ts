@@ -2,13 +2,13 @@ import { globalShortcut, clipboard, Notification } from 'electron';
 import { execFile } from 'child_process';
 import { randomUUID } from 'node:crypto';
 import { focusStore } from '../store';
-import { checkAccessibilityPermission } from './permissionCheck';
+import { checkAccessibilityPermission, openAccessibilitySettings } from './permissionCheck';
 import type { Capture } from '../../../shared/schema/index';
 
 // Global mouse/keyboard hooks. Lets us detect "user just released the mouse
 // after dragging" — a strong signal that they finished selecting text — even
 // inside Electron-based apps where AXSelectedText is blank. Same trick PopClip
-// and Highlights use. Requires Accessibility permission for Focus OS itself.
+// and Highlights use. Requires Accessibility permission for StudyDesk itself.
 import { uIOhook, UiohookMouseEvent } from 'uiohook-napi';
 
 // ── Clipboard-fallback capture ───────────────────────────────────────────────
@@ -123,22 +123,36 @@ export class CaptureService {
     this.stopAutoCapture();
   }
 
-  startAutoCapture() {
+  startAutoCapture(): { enabled: boolean; permissionGranted: boolean; error?: string } {
+    const permissionGranted = checkAccessibilityPermission();
+    if (!permissionGranted) {
+      openAccessibilitySettings();
+      return {
+        enabled: false,
+        permissionGranted: false,
+        error: 'Accessibility permission is required before StudyDesk can watch selected text.',
+      };
+    }
+
     this.startAutoCapturePoll();
-    return this.isAutoCaptureEnabled();
+    return { enabled: this.isAutoCaptureEnabled(), permissionGranted: true };
   }
 
-  stopAutoCapture() {
+  stopAutoCapture(): { enabled: boolean; permissionGranted: boolean } {
     if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
     if (this.hookStarted) {
       try { uIOhook.stop(); } catch { /* ignore */ }
       this.hookStarted = false;
     }
-    return this.isAutoCaptureEnabled();
+    return { enabled: this.isAutoCaptureEnabled(), permissionGranted: checkAccessibilityPermission() };
+  }
+
+  getAutoCaptureStatus(): { enabled: boolean; permissionGranted: boolean } {
+    return { enabled: this.hookStarted, permissionGranted: checkAccessibilityPermission() };
   }
 
   isAutoCaptureEnabled() {
-    return this.hookStarted;
+    return this.getAutoCaptureStatus().enabled;
   }
 
   // ── Auto-capture: mouse-driven (PopClip pattern) ─────────────────────────
@@ -147,7 +161,7 @@ export class CaptureService {
   // Cmd+C, read clipboard, then RESTORE the original clipboard. This works
   // in EVERY app — including Electron apps like Claude, VSCode, Slack — and
   // requires no per-app integration. Apple Accessibility permission for
-  // Focus OS is still required (for the global mouse hook itself).
+  // StudyDesk is still required (for the global mouse hook itself).
   private mouseDownX = 0;
   private mouseDownY = 0;
   private hookStarted = false;

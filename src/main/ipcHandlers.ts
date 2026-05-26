@@ -189,17 +189,11 @@ export function setupIPC() {
     return focusStore.get('captures').find(c => c.id === req.id)!;
   });
 
-  ipcMain.handle('capture:autoStatus', () => ({
-    enabled: captureService.isAutoCaptureEnabled(),
-  }));
+  ipcMain.handle('capture:autoStatus', () => captureService.getAutoCaptureStatus());
 
-  ipcMain.handle('capture:startAuto', () => ({
-    enabled: captureService.startAutoCapture(),
-  }));
+  ipcMain.handle('capture:startAuto', () => captureService.startAutoCapture());
 
-  ipcMain.handle('capture:stopAuto', () => ({
-    enabled: captureService.stopAutoCapture(),
-  }));
+  ipcMain.handle('capture:stopAuto', () => captureService.stopAutoCapture());
 
   // ── Focus OS: Capture Linking ──────────────────────────────────────────
   ipcMain.handle('capture:unlinked', (_e, req: { courseId?: string; limit?: number }) => {

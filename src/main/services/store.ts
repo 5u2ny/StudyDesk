@@ -40,9 +40,16 @@ function defaults(): StoreData {
 
 function storePath(): string {
   try {
-    return path.join(app.getPath('userData'), 'focus-os-store.json');
+    const userData = app.getPath('userData');
+    const currentPath = path.join(userData, 'studydesk-store.json');
+    const legacyPath = path.join(userData, 'focus-os-store.json');
+    if (!fs.existsSync(currentPath) && fs.existsSync(legacyPath)) return legacyPath;
+    return currentPath;
   } catch {
-    return path.join(process.cwd(), '.focus-os-store.test.json');
+    const currentPath = path.join(process.cwd(), '.studydesk-store.test.json');
+    const legacyPath = path.join(process.cwd(), '.focus-os-store.test.json');
+    if (!fs.existsSync(currentPath) && fs.existsSync(legacyPath)) return legacyPath;
+    return currentPath;
   }
 }
 
@@ -89,7 +96,7 @@ class FocusStore {
   }
 
   /** Move a corrupt store file aside under
-   *  `<userData>/backups/auto-repair-<timestamp>/focus-os-store.json` so
+   *  `<userData>/backups/auto-repair-<timestamp>/studydesk-store.json` so
    *  the next boot starts from defaults instead of crashing. */
   private quarantine(reason: string): void {
     try {

@@ -23,9 +23,9 @@ export interface IPCContracts {
   'capture:delete': { req: { id: string }; res: void };
   'capture:pin':    { req: { id: string; pinned: boolean }; res: Capture };
   'capture:update': { req: { id: string; patch: Partial<Capture> }; res: Capture };
-  'capture:autoStatus': { req: void; res: { enabled: boolean } };
-  'capture:startAuto': { req: void; res: { enabled: boolean } };
-  'capture:stopAuto': { req: void; res: { enabled: boolean } };
+  'capture:autoStatus': { req: void; res: { enabled: boolean; permissionGranted: boolean } };
+  'capture:startAuto': { req: void; res: { enabled: boolean; permissionGranted: boolean; error?: string } };
+  'capture:stopAuto': { req: void; res: { enabled: boolean; permissionGranted: boolean } };
 
   // Capture linking
   'capture:unlinked':   { req: { courseId?: string; limit?: number }; res: Capture[] };

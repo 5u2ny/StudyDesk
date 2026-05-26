@@ -1289,6 +1289,7 @@ export default function App() {
     setSelectedCourseId(course.id)
     setAppView('workspace')
     setActiveTool('materials')
+    setShowAddCourseModal(false)
     refresh({ defaultCourseId: course.id, avoidSyllabusDefault: true }).catch(() => {})
   }
 
@@ -1533,15 +1534,6 @@ export default function App() {
           await reviewStudyItem(id, difficulty)
         }}
       />
-
-      {/* Add Course Modal (workspace context) */}
-      {showAddCourseModal && (
-        <AddCourseModal
-          onClose={() => setShowAddCourseModal(false)}
-          onCourseCreated={handleCourseCreatedFromModal}
-          onOpenMaterials={openCourseMaterialsFromModal}
-          onStatus={setStatus}
-        />
       )}
 
       {/* Status banner overlay */}

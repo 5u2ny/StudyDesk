@@ -1071,7 +1071,11 @@ export default function App() {
         setStatus(`Published ${result.noteCount} note${result.noteCount === 1 ? '' : 's'} to ${result.outDir}`)
         setTimeout(() => setStatus(''), 4500)
       }
-    } catch (err) { console.warn('[publishStaticSite]', err) }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Publish failed'
+      setStatus(`Publish failed: ${message}`)
+      setTimeout(() => setStatus(''), 4500)
+    }
   }
 
   const materialsContent = (
@@ -1534,6 +1538,14 @@ export default function App() {
           await reviewStudyItem(id, difficulty)
         }}
       />
+
+      {showAddCourseModal && (
+        <AddCourseModal
+          onClose={() => setShowAddCourseModal(false)}
+          onCourseCreated={handleCourseCreatedFromModal}
+          onOpenMaterials={openCourseMaterialsFromModal}
+          onStatus={setStatus}
+        />
       )}
 
       {/* Status banner overlay */}

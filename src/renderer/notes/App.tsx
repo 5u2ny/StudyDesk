@@ -2034,8 +2034,8 @@ function DeadlinesView({
       <header className="phase3-header">
         <div>
           <p className="phase3-eyebrow">Deadlines</p>
-          <h1>{filtered.length} upcoming</h1>
-          <span>List view groups by status; Timeline view plots by week.</span>
+          <h1>{filtered.length} deadline{filtered.length === 1 ? '' : 's'}</h1>
+          <span>List shows status and completion actions. Timeline shows how work spreads across the term.</span>
         </div>
         <div className="phase3-actions" role="tablist" aria-label="Deadlines view mode">
           <button
@@ -2055,7 +2055,7 @@ function DeadlinesView({
       {view === 'timeline' ? (
         <TimelineView notes={notes} deadlines={deadlines} captures={captures} studyItems={studyItems} courses={courses} courseId={courseId} onSelectNote={onSelectNote} />
       ) : filtered.length === 0 ? (
-        <EmptyState icon={CalendarDays} title="No deadlines" description="No deadlines for this course yet. Import a syllabus or add them manually." />
+        <EmptyState icon={CalendarDays} title="No deadlines" description="Import a syllabus, add assignment due dates, or create deadlines from notes to fill this course plan." />
       ) : (
         <div className="px-4 pb-4 space-y-1.5">
           {filtered.map(d => {
@@ -2131,9 +2131,9 @@ function CourseCalendarView({
       <section className="phase3-card">
         <header className="phase3-header">
           <div>
-            <p className="phase3-eyebrow">Course Calendar</p>
+            <p className="phase3-eyebrow">Course plan</p>
             <h1>Pick a course</h1>
-            <span>Import or select a course to see upcoming work, readings, and preparation tasks.</span>
+            <span>Select a course to see readings, assignments, deadlines, and class-prep tasks in one dated plan.</span>
           </div>
         </header>
       </section>
@@ -2219,7 +2219,7 @@ function CourseCalendarView({
       <section className="phase3-card course-calendar-view">
         <header className="phase3-header course-calendar-schedule-header">
           <div>
-            <p className="phase3-eyebrow">Course Calendar</p>
+            <p className="phase3-eyebrow">Course plan</p>
             <h1>{currentCourse.code ?? currentCourse.name}</h1>
             <span>
               {scheduleRows.length} syllabus week{scheduleRows.length === 1 ? '' : 's'} · {prepCount} prep item{prepCount === 1 ? '' : 's'} · {milestoneCount} milestone{milestoneCount === 1 ? '' : 's'}
@@ -2250,12 +2250,12 @@ function CourseCalendarView({
     <section className="phase3-card course-calendar-view">
       <header className="phase3-header">
         <div>
-          <p className="phase3-eyebrow">Course Calendar</p>
+          <p className="phase3-eyebrow">Course plan</p>
           <h1>{currentCourse.code ?? currentCourse.name}</h1>
           <span>
             {nextDate
-              ? `Next up: ${comingUp[0].title} on ${formatCalendarDate(nextDate)}.`
-              : 'No dated work is available yet. Import a syllabus to populate the course calendar.'}
+              ? `Next dated item: ${comingUp[0].title} on ${formatCalendarDate(nextDate)}.`
+              : 'No dated work is available yet. Import a syllabus or add deadlines to populate this plan.'}
           </span>
         </div>
         <div className="course-calendar-meta" aria-label="Course details">
@@ -2268,9 +2268,9 @@ function CourseCalendarView({
 
       <div className="course-calendar-grid">
         <section className="phase3-panel course-calendar-main">
-          <h2>Coming up</h2>
+          <h2>Next dated work</h2>
           {comingUp.length === 0 ? (
-            <CourseCalendarEmpty text="No upcoming course items yet." />
+            <CourseCalendarEmpty text="No dated work yet. Add a deadline or import a syllabus to start the plan." />
           ) : comingUp.map((item, index) => (
             <CourseCalendarRow
               key={item.id}
@@ -2284,9 +2284,9 @@ function CourseCalendarView({
         </section>
 
         <section className="phase3-panel">
-          <h2>Read before class</h2>
+          <h2>Assigned readings</h2>
           {readingItems.length === 0 ? (
-            <CourseCalendarEmpty text="No syllabus schedule rows captured yet." />
+            <CourseCalendarEmpty text="No readings detected yet. Import a syllabus or reading material to fill this lane." />
           ) : readingItems.map(item => (
             <CourseCalendarRow
               key={item.id}
@@ -2300,9 +2300,9 @@ function CourseCalendarView({
         </section>
 
         <section className="phase3-panel">
-          <h2>Assignments due</h2>
+          <h2>Assessments due</h2>
           {dueAssignments.length === 0 ? (
-            <CourseCalendarEmpty text="No active assignment due dates yet." />
+            <CourseCalendarEmpty text="No assignment, quiz, exam, or project due dates yet." />
           ) : dueAssignments.map(item => (
             <CourseCalendarRow
               key={item.id}
@@ -2316,9 +2316,9 @@ function CourseCalendarView({
         </section>
 
         <section className="phase3-panel">
-          <h2>Prepare before class</h2>
+          <h2>Class prep and setup</h2>
           {prepAlerts.length === 0 && prepMeetings.length === 0 ? (
-            <CourseCalendarEmpty text="No setup or class prep alerts yet." />
+            <CourseCalendarEmpty text="No prep tasks yet. Setup reminders and class actions will appear here." />
           ) : (
             <>
               {prepAlerts.map(alert => (
@@ -3277,9 +3277,9 @@ function DashboardView({
     <section className="phase3-card dashboard-view today-dashboard">
       <header className="phase3-header today-dashboard-header">
         <div>
-          <p className="phase3-eyebrow">Today</p>
+          <p className="phase3-eyebrow">Do next</p>
           <h1>{currentCourse ? currentCourse.code ?? currentCourse.name : 'What to work on now'}</h1>
-          <span>{currentCourse ? primaryAction : 'Pick a course from the left rail to see today’s work.'}</span>
+          <span>{currentCourse ? `Start here: ${primaryAction}` : 'Pick a course from the left rail to see today’s work.'}</span>
         </div>
         <div className="today-header-actions" aria-label="Today actions">
           <button className="outline-button" onClick={() => onNavigate('deadlines')}><Clock3 size={14} /> Deadlines</button>
@@ -3290,10 +3290,10 @@ function DashboardView({
       </header>
 
       <div className="today-summary-grid">
-        <MetricCard label="Due today" value={todayDeadlines.length} detail={upcomingDeadlines.length > 0 ? `${upcomingDeadlines.length} next 7 days` : 'No near deadline'} icon={<CalendarDays size={20} />} />
+        <MetricCard label="Due now" value={todayDeadlines.length} detail={upcomingDeadlines.length > 0 ? `${upcomingDeadlines.length} due this week` : 'No near deadlines'} icon={<CalendarDays size={20} />} />
         <MetricCard label="Study due" value={dueStudyItems.length} detail={`${studyItems.length} total study items`} icon={<Layers size={20} />} />
         <MetricCard label="Reminders" value={alerts.length} detail="Notifications and alerts" icon={<Bell size={20} />} />
-        <MetricCard label="Captures" value={captures.length} detail="Inbox moved here" icon={<ClipboardList size={20} />} />
+        <MetricCard label="Captures" value={captures.length} detail="Recent clips to triage" icon={<ClipboardList size={20} />} />
       </div>
 
       <div className="today-dashboard-grid">
@@ -3527,16 +3527,16 @@ function QuizView({
         <div>
           <p className="phase3-eyebrow">Quiz</p>
           <h1>Self-check questions</h1>
-          <span>{questions.length > 0 ? 'Reveal the answer, then mark whether you knew it.' : 'Generate or save questions from source materials to start a quiz session.'}</span>
+          <span>{questions.length > 0 ? 'Practice one question at a time, reveal the answer, then grade honestly.' : 'Select text or a source note, then build reviewed question cards before saving anything.'}</span>
         </div>
         <div className="phase3-actions">
           {drafts.length > 0 && (
             <button className="outline-button" onClick={() => { setDrafts([]); setDraftAnswerRevealed(false); setStatusMsg(null) }} disabled={saving}>
-              Clear candidates
+              Clear draft queue
             </button>
           )}
           <button className="review-button" onClick={generate} disabled={!selectedText || saving}>
-            <HelpCircle size={15} /> Extract questions
+            <HelpCircle size={15} /> Build from selection
           </button>
         </div>
       </header>
@@ -3682,7 +3682,7 @@ function QuizView({
       {drafts.length === 0 && !activeQuestion && (
         <div className="phase3-panel">
           {selectedText ? (
-            <p className="empty-hint">Click "Extract questions" to create local question candidates from the selected document. Nothing is saved until you review it.</p>
+             <p className="empty-hint">Click "Build from selection" to create local question drafts. Review each one before it enters your study queue.</p>
           ) : (
             <EmptyHint message="No quiz questions yet" hint="Select a material or note, extract questions, then save them for review." />
           )}
@@ -3844,7 +3844,7 @@ function FlashcardsView({
         <div>
           <p className="phase3-eyebrow">Flashcards</p>
           <h1>Active recall</h1>
-          <span>{selectedText ? 'Review saved cards or generate candidates from the selected source.' : 'Review saved cards or select a source to generate more.'}</span>
+          <span>{selectedText ? 'Study saved cards or extract editable drafts from the current selection.' : 'Study saved cards, sync from notes, or select source text to create more.'}</span>
         </div>
         <div className="flashcards-header-actions">
           {/* T4 anti-shame: Forgive backlog. Only renders when there
@@ -3892,12 +3892,12 @@ function FlashcardsView({
               }}
               title="Re-derive flashcards from all notes (heading-based, level 3)"
             >
-              {syncing ? <Spinner size={15} /> : <Sparkles size={15} />} Sync from notes
+              {syncing ? <Spinner size={15} /> : <Sparkles size={15} />} Sync notes
             </button>
           )}
           {drafts.length === 0
-            ? <button className="review-button" onClick={generate} disabled={!selectedText}><ClipboardList size={15} /> Extract from source</button>
-            : <button className="review-button" onClick={handleSave}><ClipboardList size={15} /> Save flashcards ({drafts.length})</button>
+            ? <button className="review-button" onClick={generate} disabled={!selectedText}><ClipboardList size={15} /> Draft from selection</button>
+            : <button className="review-button" onClick={handleSave}><ClipboardList size={15} /> Save reviewed cards ({drafts.length})</button>
           }
         </div>
       </header>

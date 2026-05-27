@@ -43,22 +43,25 @@ export function NotesListView({ notes, currentCourse, onSelect, onCreate }: Note
     return filtered.sort((a, b) => b.updatedAt - a.updatedAt)
   }, [notes, currentCourse, typeFilter, search])
 
+  const allCourseNotes = useMemo(() => currentCourse ? notes.filter(n => n.courseId === currentCourse.id) : notes, [notes, currentCourse])
+
   const docTypes = useMemo(() => {
-    const all = currentCourse ? notes.filter(n => n.courseId === currentCourse.id) : notes
-    const types = new Set(all.map(n => n.documentType).filter(Boolean))
+    const types = new Set(allCourseNotes.map(n => n.documentType).filter(Boolean))
     return Array.from(types) as string[]
-  }, [notes, currentCourse])
+  }, [allCourseNotes])
+
+  const linkedCaptureCount = allCourseNotes.reduce((sum, note) => sum + (note.capturedFromIds?.length ?? 0), 0)
 
   return (
     <section className="notes-list-view">
       <header className="notes-list-header">
         <div className="notes-list-header-top">
           <div>
-            <p className="notes-list-eyebrow">Notes</p>
+            <p className="notes-list-eyebrow">Notebook</p>
             <h1 className="notes-list-title">
               {currentCourse ? currentCourse.name : 'All Notes'}
             </h1>
-            <span className="notes-list-count">{courseNotes.length} note{courseNotes.length !== 1 ? 's' : ''}</span>
+            <span className="notes-list-count">{courseNotes.length} shown · {allCourseNotes.length} total · {linkedCaptureCount} linked capture{linkedCaptureCount === 1 ? '' : 's'}</span>
           </div>
           <button className="btn-primary" onClick={() => onCreate('note')}>
             <Plus size={14} /> New note
@@ -82,7 +85,7 @@ export function NotesListView({ notes, currentCourse, onSelect, onCreate }: Note
                 className={cn('notes-filter-chip', !typeFilter && 'is-active')}
                 onClick={() => setTypeFilter(null)}
               >
-                All
+                <Filter size={12} /> All
               </button>
               {docTypes.map(t => (
                 <button
@@ -107,8 +110,8 @@ export function NotesListView({ notes, currentCourse, onSelect, onCreate }: Note
           </p>
           <p className="notes-list-empty-desc">
             {search
-              ? 'Try a different search term.'
-              : 'Create your first note to get started.'}
+              ? 'Try a different title or clear the document-type filter.'
+              : 'Use the New note button to start the course notebook.'}
           </p>
           {!search && (
             <button className="btn-primary" onClick={() => onCreate('note')}>

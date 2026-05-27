@@ -207,7 +207,7 @@ export function StudioPanel({
     <div className="studio-panel">
       <header className="studio-panel-head">
         <span className="studio-eyebrow">Studio</span>
-        <h2>Study tools</h2>
+        <h2>Study Studio</h2>
       </header>
 
       <div className="studio-stack">
@@ -224,7 +224,7 @@ export function StudioPanel({
           open={isOpen('quiz')} onToggle={() => toggle('quiz')}
           icon={HelpCircle}
           title="Quiz"
-          description={hasActiveNote ? 'Test yourself from the active note' : 'Open a note to enable'}
+          description={hasActiveNote ? 'No-AI headings or local AI questions' : 'Open a note to enable'}
           badge={aiQuiz.length || undefined}
         >
           <div className="studio-card-actions">
@@ -234,7 +234,7 @@ export function StudioPanel({
               disabled={!hasActiveNote}
               title="Extract questions from headings (no AI needed)"
             >
-              <Sparkles size={13} /> From headings
+              <Sparkles size={13} /> No-AI headings
             </button>
             <button
               className="btn-primary"
@@ -242,7 +242,7 @@ export function StudioPanel({
               disabled={!hasActiveNote || aiLoading === 'quiz'}
               title="Generate quiz with local AI (requires Ollama)"
             >
-              {aiLoading === 'quiz' ? <><Loader2 size={13} className="spin" /> Generating...</> : <><HelpCircle size={13} /> AI generate</>}
+              {aiLoading === 'quiz' ? <><Loader2 size={13} className="spin" /> Generating...</> : <><HelpCircle size={13} /> Generate with AI</>}
             </button>
           </div>
           {aiQuiz.length > 0 && (
@@ -268,7 +268,7 @@ export function StudioPanel({
           open={isOpen('flashcards')} onToggle={() => toggle('flashcards')}
           icon={Layers}
           title="Flashcards"
-          description={hasActiveNote ? 'Generate cards from your note' : 'Open a note to enable'}
+          description={hasActiveNote ? 'Draft editable cards from the active note' : 'Open a note to enable'}
           badge={aiFlashcards.length || undefined}
         >
           <button
@@ -277,7 +277,7 @@ export function StudioPanel({
             disabled={!hasActiveNote || aiLoading === 'flashcards'}
             style={{ width: '100%' }}
           >
-            {aiLoading === 'flashcards' ? <><Loader2 size={13} className="spin" /> Generating...</> : <><Layers size={13} /> Generate flashcards</>}
+            {aiLoading === 'flashcards' ? <><Loader2 size={13} className="spin" /> Generating...</> : <><Layers size={13} /> Generate card drafts</>}
           </button>
           {aiFlashcards.length > 0 && (
             <>
@@ -295,7 +295,7 @@ export function StudioPanel({
                   onStatus?.(`Saved ${aiFlashcards.length} flashcards to your deck`)
                   setAiFlashcards([])
                 }} style={{ width: '100%' }}>
-                  Save all {aiFlashcards.length} to deck
+                  Save all {aiFlashcards.length} drafts to deck
                 </button>
               )}
             </>
@@ -308,7 +308,7 @@ export function StudioPanel({
           open={isOpen('ai-notes')} onToggle={() => toggle('ai-notes')}
           icon={FileText}
           title="AI Notes"
-          description={hasActiveNote ? 'Generate, summarize, or merge' : 'Open a note to enable'}
+          description={hasActiveNote ? 'Summarize, merge, or create study notes' : 'Open a note to enable'}
         >
           <div className="studio-card-actions" style={{ flexDirection: 'column', gap: 6 }}>
             <button
@@ -379,7 +379,7 @@ export function StudioPanel({
               open={isOpen('related')} onToggle={() => toggle('related')}
               icon={GitBranch}
               title="Related Notes"
-              description="Notes connected to the active note"
+              description="Nearby ideas and reusable context"
             >
               <RelatedNotesList
                 note={activeNote}

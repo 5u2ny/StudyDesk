@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Focus OS are documented in this file.
+All notable changes to StudyDesk are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Pill UI unified into a single glass surface for visual consistency
   (`f8b1556`).
+- StudyDesk notes workspace copy now uses clearer student-facing language for
+  course plans, deadlines, notebooks, quiz/flashcard draft flows, and the Study
+  Studio panel.
 
 ### Fixed
 - Gmail "Invalid credentials" errors now surface an actionable setup guide

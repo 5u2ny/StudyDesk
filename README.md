@@ -86,13 +86,20 @@ The workspace hides on close rather than destroying, so reopening is instant.
 - **Dashboard first** -- launch into a clean overview of courses, deadlines,
   due cards, assignments, and reminders.
 - **Notes tab** -- a first-class notes browser instead of hiding notes inside
-  the editor surface.
+  the editor surface. The notebook header shows filtered notes, total course
+  notes, and linked capture counts so students can see whether source material
+  has been connected.
+- **Course plan language** -- calendar and deadline surfaces use student-facing
+  labels such as next dated work, assigned readings, assessments due, and class
+  prep so syllabus imports read like an action plan rather than a raw calendar.
 - **Capture inbox** -- view unlinked captures and attach them to the active
   note; `Cmd+Shift+L` links the newest unlinked capture to the current note.
 - **Materials reader** -- attach course material folders, import PDFs or
   Markdown, and read imported materials in a dedicated view.
 - **Studio panel** -- generate summaries, study notes, quizzes, and flashcards
-  from the active note through the local generation service.
+  from the active note through the local generation service. Draft-oriented
+  labels make clear when questions or cards are editable review candidates
+  before they are saved to the study queue.
 - **Auto-tagging** -- content edits trigger best-effort note tags based on
   extracted keywords and course context.
 - **Syllabus review** -- paste or select syllabus text, parse course metadata,
@@ -129,7 +136,9 @@ manually.
 
 `npm start` builds the renderer and main process, applies the development
 rebrand script, and launches the actual Electron app. Use it when checking the
-desktop UI. `npm run dev:renderer` is only for isolated renderer debugging.
+desktop UI. `npm run dev:renderer` is only for isolated renderer debugging; the
+notes workspace preview is served at
+`http://localhost:7331/src/renderer/notes/index.html`.
 
 ## Troubleshooting
 

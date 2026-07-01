@@ -5,17 +5,6 @@ syllabi, assignments, captured source material, study cards, reminders, and
 class notes into one desktop app with a lightweight notch HUD and a full
 workspace window.
 
-## Portfolio Context
-
-This repo reflects the StudyDesk project from my resume and portfolio: a local-first, AI-agent-assisted Electron/React/TypeScript desktop command center for courses, captures, deadlines, notes, and study workflows. It is useful proof for AI product roles because the product design starts with the actual job-to-be-done, then wraps capture, deadlines, notes, study tools, and optional AI helpers into one workflow.
-
-The main app is no longer a generic note editor. It opens to a course dashboard,
-then moves into a structured workspace with notes, deadlines, study tools,
-materials, maps, timelines, and an optional Studio panel for generation.
-
-Core flows work without paid AI APIs, hosted models, Ollama, or continuous local
-model inference. AI helpers are optional and fail softly when no local model is
-available.
 
 ## Install
 
